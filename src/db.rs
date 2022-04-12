@@ -27,25 +27,6 @@ pub struct Db {
     chunk_count: Tree,
 }
 
-fn merge_inc(old: Option<&[u8]>) -> Vec<u8> {
-    let mut wtr = vec![];
-    dbg!(&old);
-    let ret = match old {
-        Some(x) => {
-            let mut rdr = std::io::Cursor::new(x);
-            wtr.write_u32::<LittleEndian>(rdr.read_u32::<LittleEndian>().unwrap() + 1)
-                .unwrap();
-            wtr
-        }
-        None => {
-            wtr.write_u32::<LittleEndian>(1).unwrap();
-            wtr
-        }
-    };
-    dbg!(&ret);
-    ret.to_vec()
-}
-
 impl Db {
     pub fn new() -> sled::Result<Db> {
         let db = sled::open(DB_NAME)?;
@@ -142,21 +123,5 @@ mod tests {
         };
         db.add_file(&f).unwrap();
         assert_eq!(f, db.get_file("ABCDEF1234567890".to_string()).unwrap())
-    }
-
-    #[test]
-    fn test_merge_inc() {
-        assert_eq!(
-            merge_inc(&[0u8], None, None),
-            Some([1u8, 0u8, 0u8, 0u8].to_vec())
-        );
-        assert_eq!(
-            merge_inc(&[0u8], Some(&[100u8, 0u8, 0u8, 0u8]), None),
-            Some([101u8, 0u8, 0u8, 0u8].to_vec())
-        );
-        assert_eq!(
-            merge_inc(&[0u8], Some(&[255u8, 0u8, 0u8, 0u8]), None),
-            Some([0u8, 1u8, 0u8, 0u8].to_vec())
-        );
     }
 }
