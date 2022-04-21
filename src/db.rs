@@ -2,12 +2,22 @@ use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use serde::{Deserialize, Serialize};
 use sled::{transaction::ConflictableTransactionResult, Transactional, Tree};
 
+/// Static name of the file_table
 static FILE_TABLE: &str = "file_table";
+/// Static name of the chunk_table
 static CHUNK_TABLE: &str = "chunk_table";
+/// Static name of the chunk_count table
 static CHUNK_COUNT: &str = "chunk_count";
+/// Static name of the entire database
 static DB_NAME: &str = "data";
 
 #[derive(Serialize, Deserialize, Debug, PartialEq)]
+/// Structure to store needed metadata for a file
+///
+/// This includes:
+/// - filename
+/// - A vector of chunk IDs (their hashes)
+/// - The overall hash of the file being represented
 pub struct File {
     pub filename: String,
     pub chunks: Vec<String>,
@@ -15,19 +25,33 @@ pub struct File {
 }
 
 #[derive(Debug)]
+/// Structure for a single file chunk. Composed of the hash and the data.
 pub struct Chunk {
     pub hash: String,
     pub data: Vec<u8>,
 }
 
 #[derive(Debug)]
+/// The main database stucture to store back-end data.
 pub struct Db {
+    /// Database table to store file metadata and associated chunk hashes
     file_table: Tree,
+    /// Database table to store the actual data for each chunk
     chunk_table: Tree,
+    /// Backpointer table storing the count of references to any given chunk
+    ///
+    /// This will be used to determine when it's safe to remove a chunk from the database (in the
+    /// case where multiple files reference the same chunk)
     chunk_count: Tree,
 }
 
 impl Db {
+    /// Create a new instance of the database.
+    ///
+    /// This also opens the database tables using the statics:
+    /// - [`FILE_TABLE`](static.FILE_TABLE.html)
+    /// - [`CHUNK_TABLE`](static.CHUNK_TABLE.html)
+    /// - [`CHUNK_COUNT`](static.CHUNK_COUNT.html)
     pub fn new() -> sled::Result<Db> {
         let db = sled::open(DB_NAME)?;
         Ok(Db {
@@ -37,11 +61,17 @@ impl Db {
         })
     }
 
+    /// Adds a [File](struct.File.html) struct into the file_table database.
+    ///
+    /// This also increments the referenced values in the [`chunk_count`](#structfield.chunk_count)
+    /// table; however, it doesn't actually insert any data into the
+    /// [`chunk_table`](#structfield.chunk_table) table.
     pub fn add_file(&self, file: &File) -> sled::Result<()> {
         let value = match bincode::serialize(&file) {
             Ok(x) => x,
             Err(_) => panic!("Couldn't serialize file to store in database"),
         };
+        // TODO: Improve error handling
         (&self.file_table, &self.chunk_count)
             .transaction(
                 |(ft, cc)| -> ConflictableTransactionResult<(), sled::Error> {
@@ -78,6 +108,7 @@ impl Db {
         Ok(())
     }
 
+    /// Returns a [File](struct.File.html) from the database when given a file_hash.
     pub fn get_file(&self, file_hash: String) -> sled::Result<File> {
         match self.file_table.get(file_hash) {
             Ok(x) => match x {
@@ -90,19 +121,40 @@ impl Db {
         }
     }
 
+    /// Adds a chunk into the [`chunk_table`](#structfield.chunk_table) table.
+    ///
+    /// NOTE: This should be run after [`add_file()`](#method.add_file) so orphaned chunks into the
+    /// database. This function checks the chunk count table to ensure references to the chunk
+    /// exist. If this check wasn't preformed, it would be possible to add orphaned chunks into the
+    /// database, which would be expensive to clean up.
     pub fn add_chunk(&self, chunk: &Chunk) -> sled::Result<()> {
-        self.chunk_table.insert(&*chunk.hash, &*chunk.data)?;
+        //self.chunk_table.insert(&*chunk.hash, &*chunk.data)?;
+        (&self.chunk_table, &self.chunk_count)
+            .transaction(
+                |(ct, cc)| -> ConflictableTransactionResult<(), sled::Error> {
+                    // Check to see if the chunk is referenced (via the chunk_count table) to make
+                    // sure orphaned chunks are never added into the database. This should prevent
+                    // the need of expensive database clean up operations
+                    if let Ok(Some(_)) = cc.get(&*chunk.hash) {
+                        ct.insert(&*chunk.hash, &*chunk.data)?;
+                    }
+                    Ok(())
+                },
+            )
+            .unwrap();
         Ok(())
     }
 
+    /// Gets a chunk out of the database given it's ID (hash).
     pub fn get_chunk(&self, chunk_hash: String) -> sled::Result<Chunk> {
+        // TODO: Improve error handling
         match self.chunk_table.get(&chunk_hash) {
             Ok(x) => match x {
                 Some(value) => Ok(Chunk {
                     hash: chunk_hash,
                     data: value.to_vec(),
                 }),
-                None => panic!("Chunk now found"),
+                None => panic!("Chunk not found"),
             },
             Err(e) => Err(e),
         }
