@@ -1,8 +1,9 @@
 use serde::{Deserialize, Serialize};
 
+/// Database module to handle backend storage and transactions
 mod db;
 
-use db::{Db, File, Chunk};
+use db::{Chunk, Db, File};
 
 #[derive(Serialize, Deserialize, Debug)]
 struct File2 {
@@ -29,8 +30,18 @@ fn main() -> sled::Result<()> {
     db.add_file(&f).unwrap();
     db.add_chunk(&c).unwrap();
 
-    dbg!(db.get_file(f.hash).unwrap());
-    dbg!(db.get_chunk(c.hash).unwrap());
+    dbg!(db.get_file(&f.hash).unwrap());
+
+    db.rm_file(&f.hash);
+
+    dbg!(db.get_file(&f.hash).unwrap());
+
+    let chunk = db.get_chunk(&c.hash).unwrap();
+    dbg!(&chunk);
+    match std::str::from_utf8(&chunk.data) {
+        Ok(x) => println!("Chunk data: {}", x),
+        Err(_) => (),
+    };
 
     Ok(())
 }

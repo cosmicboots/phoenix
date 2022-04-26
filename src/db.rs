@@ -109,7 +109,7 @@ impl Db {
     }
 
     /// Returns a [File](struct.File.html) from the database when given a file_hash.
-    pub fn get_file(&self, file_hash: String) -> sled::Result<File> {
+    pub fn get_file(&self, file_hash: &str) -> sled::Result<File> {
         match self.file_table.get(file_hash) {
             Ok(x) => match x {
                 Some(value) => {
@@ -135,8 +135,8 @@ impl Db {
                     // Check to see if the chunk is referenced (via the chunk_count table) to make
                     // sure orphaned chunks are never added into the database. This should prevent
                     // the need of expensive database clean up operations
-                    if let Ok(Some(_)) = cc.get(&*chunk.hash) {
-                        ct.insert(&*chunk.hash, &*chunk.data)?;
+                    if let Ok(Some(_)) = cc.get(&chunk.hash) {
+                        ct.insert(chunk.hash.as_str(), chunk.data.to_owned())?;
                     }
                     Ok(())
                 },
@@ -146,12 +146,12 @@ impl Db {
     }
 
     /// Gets a chunk out of the database given it's ID (hash).
-    pub fn get_chunk(&self, chunk_hash: String) -> sled::Result<Chunk> {
+    pub fn get_chunk(&self, chunk_hash: &str) -> sled::Result<Chunk> {
         // TODO: Improve error handling
         match self.chunk_table.get(&chunk_hash) {
             Ok(x) => match x {
                 Some(value) => Ok(Chunk {
-                    hash: chunk_hash,
+                    hash: chunk_hash.to_owned(),
                     data: value.to_vec(),
                 }),
                 None => panic!("Chunk not found"),
@@ -203,6 +203,9 @@ impl Db {
 mod tests {
     use super::*;
 
+    // The tests need to be able to use their own temperary database rather than using the global
+    // static
+
     #[test]
     fn test_file_db() {
         let db = Db::new().unwrap();
@@ -212,6 +215,7 @@ mod tests {
             hash: String::from("ABCDEF1234567890"),
         };
         db.add_file(&f).unwrap();
-        assert_eq!(f, db.get_file("ABCDEF1234567890".to_string()).unwrap())
+        assert_eq!(f, db.get_file("ABCDEF1234567890").unwrap())
+    }
     }
 }
