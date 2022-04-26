@@ -217,5 +217,17 @@ mod tests {
         db.add_file(&f).unwrap();
         assert_eq!(f, db.get_file("ABCDEF1234567890").unwrap())
     }
+
+    #[test]
+    fn test_file_rm() {
+        let db = Db::new().unwrap();
+        let f = File {
+            filename: String::from("filename.txt"),
+            chunks: vec![String::from("chunk1")],
+            hash: String::from("ABCDEF1234567890"),
+        };
+        db.add_file(&f).unwrap();
+        db.rm_file(&f.hash);
+        assert_eq!(f, db.get_file("ABCDEF1234567890").unwrap())
     }
 }
