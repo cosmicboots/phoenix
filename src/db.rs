@@ -159,6 +159,44 @@ impl Db {
             Err(e) => Err(e),
         }
     }
+
+    pub fn rm_file(&self, file_hash: &str) {
+        (&self.file_table, &self.chunk_table, &self.chunk_count)
+            .transaction(
+                |(ft, ct, cc)| -> ConflictableTransactionResult<(), sled::Error> {
+                    // 1. Get the file and desearialize it
+                    // 2. Iterate through the chunks and decrement the refcounter
+                    // 3.   if 0 refs, delete the chunk from the chunk table
+                    if let Ok(Some(bin_file)) = ft.get(&file_hash) {
+                        // Deserialize bin into the File struct
+                        if let Ok(file) = bincode::deserialize::<File>(&bin_file) {
+                            for chunk in file.chunks {
+                                if let Ok(Some(x)) = cc.get(&chunk) {
+                                    let mut rdr = std::io::Cursor::new(x);
+                                    match rdr.read_u32::<LittleEndian>() {
+                                        // If there are no more references to the given chunk,
+                                        // remove it from the chunk table and the chunk count table
+                                        Ok(0) | Ok(1) => {
+                                            ct.remove(&*chunk)?;
+                                            cc.remove(&*chunk)?;
+                                        }
+                                        Ok(x) => {
+                                            let mut wtr = vec![];
+                                            wtr.write_u32::<LittleEndian>(x - 1).unwrap();
+                                            cc.insert(chunk.as_bytes(), wtr)?;
+                                        }
+                                        _ => {}
+                                    }
+                                }
+                            }
+                            ft.remove(file.hash.as_bytes()).unwrap();
+                        }
+                    }
+                    Ok(())
+                },
+            )
+            .unwrap();
+    }
 }
 
 #[cfg(test)]
