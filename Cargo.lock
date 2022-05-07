@@ -162,6 +162,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "phoenix"
+version = "0.1.0"
+dependencies = [
+ "bincode",
+ "byteorder",
+ "serde",
+ "sled",
+]
+
+[[package]]
 name = "proc-macro2"
 version = "1.0.37"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -228,16 +238,6 @@ dependencies = [
  "libc",
  "log",
  "parking_lot",
-]
-
-[[package]]
-name = "sled-test"
-version = "0.1.0"
-dependencies = [
- "bincode",
- "byteorder",
- "serde",
- "sled",
 ]
 
 [[package]]
