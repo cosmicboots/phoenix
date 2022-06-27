@@ -3,6 +3,8 @@ use serde::{Deserialize, Serialize};
 /// Database module to handle backend storage and transactions
 mod db;
 
+mod messaging;
+
 use db::{Chunk, Db, File};
 
 #[derive(Serialize, Deserialize, Debug)]
