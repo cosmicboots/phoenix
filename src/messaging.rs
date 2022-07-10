@@ -97,16 +97,11 @@ impl From<Message> for Vec<u8> {
         buffer.extend((msg.verb as u16).to_be_bytes());
 
         // Add the data
-        match msg.data {
-            Some(d) => {
-                // Add the size
-                buffer.extend(d.size.to_be_bytes());
-                // Add the data
-                buffer.extend(d.data);
-            }
-            // TODO: Ideally, logic should dictate which directives require data and those that
-            // don't
-            None => buffer.extend(0u16.to_be_bytes()),
+        if let Some(d) = msg.data {
+            // Add the size
+            buffer.extend(d.size.to_be_bytes());
+            // Add the data
+            buffer.extend(d.data);
         }
         buffer.to_owned()
     }
@@ -184,7 +179,7 @@ mod tests {
             verb: Directive::ListFiles,
             data: None,
         };
-        assert_eq!(Vec::from(msg), vec!(0, 1, 0, 0, 0, 0));
+        assert_eq!(Vec::from(msg), vec!(0, 1, 0, 0));
     }
 
     #[test]
@@ -198,7 +193,7 @@ mod tests {
                 data: Some(Data::new(&vec![1, 2, 3])),
             }
         );
-        msg = &[0u8, 1u8, 0u8, 0u8, 0u8, 0u8];
+        msg = &[0u8, 1u8, 0u8, 0u8];
         assert_eq!(
             Message::from(msg),
             Message {
