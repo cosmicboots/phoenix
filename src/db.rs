@@ -1,3 +1,7 @@
+//! Database module to handle backend storage and transactions
+
+#![allow(dead_code)]
+
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use serde::{Deserialize, Serialize};
 use sled::{transaction::ConflictableTransactionResult, Transactional, Tree};
