@@ -30,11 +30,16 @@
 #![allow(dead_code)]
 #![allow(unused_variables)]
 
-struct Version(u8);
+pub mod arguments;
+
+use arguments::{Argument, Version};
+
+//struct Version(u8);
 
 /// Defines the different available protocol verbs/directives.
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum Directive {
+    AnnounceVersion,
     ListFiles,
     RequestFile,
     RequestChunk,
@@ -51,43 +56,29 @@ impl TryFrom<u16> for Directive {
     fn try_from(num: u16) -> Result<Self, Self::Error> {
         // TODO: This logic seems verbose
         match num {
-            0 => Ok(Directive::ListFiles),
-            1 => Ok(Directive::RequestFile),
-            2 => Ok(Directive::RequestChunk),
-            3 => Ok(Directive::SendFile),
-            4 => Ok(Directive::SendChunk),
-            5 => Ok(Directive::DeleteFile),
-            6 => Ok(Directive::Response),
+            0 => Ok(Directive::AnnounceVersion),
+            1 => Ok(Directive::ListFiles),
+            2 => Ok(Directive::RequestFile),
+            3 => Ok(Directive::RequestChunk),
+            4 => Ok(Directive::SendFile),
+            5 => Ok(Directive::SendChunk),
+            6 => Ok(Directive::DeleteFile),
+            7 => Ok(Directive::Response),
             _ => Err("Failed to convert Directive"),
-        }
-    }
-}
-
-#[derive(Debug, PartialEq)]
-pub struct Data {
-    size: u32,
-    data: Vec<u8>,
-}
-
-impl Data {
-    fn new(data: &[u8]) -> Data {
-        Data {
-            size: data.len() as u32,
-            data: data.to_vec(),
         }
     }
 }
 
 /// This is the main structure for every message sent over the network.
 #[derive(PartialEq, Debug)]
-pub struct Message {
+struct RawMessage {
     id: u16,
     verb: Directive,
-    data: Option<Data>,
+    data: Option<Vec<u8>>,
 }
 
-impl From<Message> for Vec<u8> {
-    fn from(msg: Message) -> Vec<u8> {
+impl From<RawMessage> for Vec<u8> {
+    fn from(msg: RawMessage) -> Vec<u8> {
         let mut buffer: Vec<u8> = vec![];
 
         // Add the message id
@@ -98,17 +89,15 @@ impl From<Message> for Vec<u8> {
 
         // Add the data
         if let Some(d) = msg.data {
-            // Add the size
-            buffer.extend(d.size.to_be_bytes());
             // Add the data
-            buffer.extend(d.data);
+            buffer.extend(d);
         }
         buffer.to_owned()
     }
 }
 
-impl From<&[u8]> for Message {
-    fn from(msg: &[u8]) -> Message {
+impl From<&[u8]> for RawMessage {
+    fn from(msg: &[u8]) -> RawMessage {
         // Two byte buffer will be used to create be arrays
         let mut buf: [u8; 2] = [0u8; 2];
 
@@ -124,12 +113,12 @@ impl From<&[u8]> for Message {
         };
 
         // Add the data
-        let data: Option<Data> = match msg.len() {
-            0..=8 => None,
-            _ => Some(Data::new(&msg[8..])),
+        let data: Option<Vec<u8>> = match msg.len() {
+            0..=4 => None,
+            _ => Some(msg[4..].to_vec()),
         };
 
-        Message { id, verb, data }
+        RawMessage { id, verb, data }
     }
 }
 
@@ -150,16 +139,65 @@ impl MessageBuilder {
         };
     }
 
-    pub fn encode_message(id: u16, verb: Directive, data: Option<Data>) -> Vec<u8> {
-        let buffer: Vec<u8> = vec![];
-        let msg = Message { id, verb, data };
+    /// Encode a message from language constructs to a binary packet format
+    pub fn encode_message<T>(&mut self, verb: Directive, argument: Option<T>) -> Vec<u8>
+    where
+        T: Argument,
+    {
+        // Encode message arguments
+        let encoded_data = match argument {
+            Some(x) => Some(x.to_bin()),
+            None => None,
+        };
 
-        todo!();
+        let msg = RawMessage {
+            id: self.current_request,
+            verb,
+            data: encoded_data,
+        };
+
+        self.current_request += 1;
+
+        msg.into()
     }
 
-    pub fn decode_message(message: Vec<u8>) -> Message {
-        todo!();
+    pub fn decode_message(message: &[u8]) -> Result<Box<Message>, arguments::Error> {
+        let msg = RawMessage::from(message);
+
+        let mut arg: Option<Box<dyn Argument>> = None;
+
+        if let Some(x) = msg.data {
+            // It's best to keep this match verbose. If directives are added in the future, the
+            // exhaustive match will force us to handle its argument type here.
+            arg = match msg.verb {
+                Directive::AnnounceVersion => Some(Box::new(arguments::Version::from_bin(&x)?)),
+                Directive::ListFiles => None,
+                Directive::RequestFile => Some(Box::new(arguments::FileId::from_bin(&x)?)),
+                Directive::RequestChunk => Some(Box::new(arguments::ChunkId::from_bin(&x)?)),
+                Directive::SendFile => Some(Box::new(arguments::FileMetadata::from_bin(&x)?)),
+                Directive::SendChunk => Some(Box::new(arguments::Chunk::from_bin(&x)?)),
+                Directive::DeleteFile => Some(Box::new(arguments::FileId::from_bin(&x)?)),
+                Directive::Response => Some(Box::new(arguments::ResponseCode::from_bin(&x)?)),
+            };
+        }
+
+        Ok(Box::new(Message {
+            id: msg.id,
+            verb: msg.verb,
+            argument: arg,
+        }))
     }
+
+    pub fn increment_counter(&mut self) {
+        self.current_request += 1;
+    }
+}
+
+#[derive(Debug)]
+pub struct Message {
+    id: u16,
+    verb: Directive,
+    argument: Option<Box<dyn Argument>>,
 }
 
 #[cfg(test)]
@@ -168,39 +206,31 @@ mod tests {
 
     #[test]
     fn test_msg_ser() {
-        let mut msg: Message = Message {
+        let mut msg: RawMessage = RawMessage {
             id: 0,
             verb: Directive::SendFile,
-            data: Some(Data::new(&vec![1, 2, 3])),
+            data: Some(vec![1, 2, 3]),
         };
-        assert_eq!(Vec::from(msg), vec!(0, 0, 0, 3, 0, 0, 0, 3, 1, 2, 3),);
-        msg = Message {
+        assert_eq!(Vec::from(msg), vec!(0, 0, 0, 4, 1, 2, 3),);
+        msg = RawMessage {
             id: 1,
             verb: Directive::ListFiles,
             data: None,
         };
-        assert_eq!(Vec::from(msg), vec!(0, 1, 0, 0));
+        assert_eq!(Vec::from(msg), vec!(0, 1, 0, 1));
     }
 
     #[test]
     fn test_msg_de() {
-        let mut msg: &[u8] = &[0u8, 0u8, 0u8, 3u8, 0u8, 0u8, 0u8, 3u8, 1u8, 2u8, 3u8][..];
-        assert_eq!(
-            Message::from(msg),
-            Message {
-                id: 0,
-                verb: Directive::SendFile,
-                data: Some(Data::new(&vec![1, 2, 3])),
-            }
-        );
-        msg = &[0u8, 1u8, 0u8, 0u8];
-        assert_eq!(
-            Message::from(msg),
-            Message {
-                id: 1,
-                verb: Directive::ListFiles,
-                data: None,
-            }
-        );
+        let mut msg_raw: &[u8] = &[0u8, 0u8, 0u8, 0u8, 1u8][..];
+        let mut msg = RawMessage {
+            id: 0,
+            verb: Directive::AnnounceVersion,
+            data: Some(vec![1]),
+        };
+        assert_eq!(RawMessage::from(msg_raw), msg,);
+        msg_raw = &[1u8, 0u8, 0u8, 0u8, 1u8];
+        msg.id += 256;
+        assert_eq!(RawMessage::from(msg_raw), msg,);
     }
 }
