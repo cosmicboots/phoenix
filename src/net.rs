@@ -7,18 +7,16 @@ use std::{
 
 use snow::{Builder, TransportState};
 
-static NOISE_PATTERN: &'static str = "Noise_XXpsk3_25519_ChaChaPoly_BLAKE2s";
-// TODO: move secret into config
-static SECRET: &[u8] = b"password";
+static NOISE_PATTERN: &'static str = "Noise_XX_25519_ChaChaPoly_BLAKE2s";
 
-struct Server {
+pub struct Server {
     stream: TcpStream,
     buf: Vec<u8>,
 }
 
 impl Server {
     pub fn new() -> Self {
-        let (stream, _) = TcpListener::bind("172.0.0.1:8080")
+        let (stream, _) = TcpListener::bind("127.0.0.1:8080")
             .expect("Failed to bind to server address")
             .accept()
             .unwrap();
@@ -35,7 +33,6 @@ impl Server {
         let static_key = builder.generate_keypair().unwrap().private;
         let mut noise = builder
             .local_private_key(&static_key)
-            .psk(3, SECRET)
             .build_responder()
             .unwrap();
 
@@ -74,32 +71,28 @@ impl Client {
         }
     }
 
-    fn handshake(&mut self) -> TransportState {
+    pub fn handshake(&mut self) -> TransportState {
         // Setup builder to start handshake
         let builder = Builder::new(NOISE_PATTERN.parse().unwrap());
         let static_key = builder.generate_keypair().unwrap().private;
         let mut noise = builder
             .local_private_key(&static_key)
-            .psk(3, SECRET)
             .build_initiator()
             .unwrap();
-
-        let mut stream = TcpStream::connect("127.0.0.1:8080").unwrap();
-        println!("Client connected!");
 
         // -> e
         // Initiate handshake
         let len = noise.write_message(&[], &mut self.buf).unwrap();
-        send(&mut stream, &self.buf[..len]);
+        send(&mut self.stream, &self.buf[..len]);
 
         // <- e, ee, s, es
         noise
-            .read_message(&recv(&mut stream).unwrap(), &mut self.buf)
+            .read_message(&recv(&mut self.stream).unwrap(), &mut self.buf)
             .unwrap();
 
         // -> s, se
         let len = noise.write_message(&[], &mut self.buf).unwrap();
-        send(&mut stream, &self.buf[..len]);
+        send(&mut self.stream, &self.buf[..len]);
 
         noise.into_transport_mode().unwrap()
     }
