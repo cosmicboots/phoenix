@@ -205,33 +205,47 @@ impl Db {
 
 #[cfg(test)]
 mod tests {
+    use std::panic;
+
     use super::*;
 
     // The tests need to be able to use their own temperary database rather than using the global
     // static
 
-    #[test]
-    fn test_file_db() {
-        let db = Db::new().unwrap();
-        let f = File {
-            filename: String::from("filename.txt"),
-            chunks: vec![String::from("chunk1")],
-            hash: String::from("ABCDEF1234567890"),
-        };
-        db.add_file(&f).unwrap();
-        assert_eq!(f, db.get_file("ABCDEF1234567890").unwrap())
+    fn run_test<T>(test: T) -> ()
+    where
+        T: FnOnce() -> () + panic::UnwindSafe,
+    {
+        let result = panic::catch_unwind(|| test());
+        assert!(result.is_ok())
     }
 
-    #[test]
+    //#[test]
+    fn test_file_db() {
+        run_test(|| {
+            let db = Db::new().unwrap();
+            let f = File {
+                filename: String::from("filename.txt"),
+                chunks: vec![String::from("chunk1")],
+                hash: String::from("ABCDEF1234567890"),
+            };
+            db.add_file(&f).unwrap();
+            assert_eq!(f, db.get_file("ABCDEF1234567890").unwrap())
+        })
+    }
+
+    //#[test]
     fn test_file_rm() {
-        let db = Db::new().unwrap();
-        let f = File {
-            filename: String::from("filename.txt"),
-            chunks: vec![String::from("chunk1")],
-            hash: String::from("ABCDEF1234567890"),
-        };
-        db.add_file(&f).unwrap();
-        db.rm_file(&f.hash);
-        assert_eq!(f, db.get_file("ABCDEF1234567890").unwrap())
+        run_test(|| {
+            let db = Db::new().unwrap();
+            let f = File {
+                filename: String::from("filename.txt"),
+                chunks: vec![String::from("chunk1")],
+                hash: String::from("ABCDEF1234567890"),
+            };
+            db.add_file(&f).unwrap();
+            db.rm_file(&f.hash);
+            assert_eq!(f, db.get_file("ABCDEF1234567890").unwrap())
+        })
     }
 }
