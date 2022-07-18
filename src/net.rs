@@ -9,13 +9,21 @@ use snow::{Builder, TransportState};
 
 static NOISE_PATTERN: &'static str = "Noise_XX_25519_ChaChaPoly_BLAKE2s";
 
+pub trait NoiseConnection {
+    fn new() -> Self;
+    fn handshake(&mut self);
+    fn send(&mut self, msg: &[u8]);
+    fn recv(&mut self) -> Vec<u8>;
+}
+
 pub struct Server {
     stream: TcpStream,
     buf: Vec<u8>,
+    noise: Option<TransportState>,
 }
 
-impl Server {
-    pub fn new() -> Self {
+impl NoiseConnection for Server {
+    fn new() -> Self {
         let (stream, _) = TcpListener::bind("127.0.0.1:8080")
             .expect("Failed to bind to server address")
             .accept()
@@ -23,11 +31,12 @@ impl Server {
         Server {
             stream,
             buf: vec![0u8; 65535],
+            noise: None,
         }
     }
 
     /// Preform noise handshake
-    pub fn handshake(&mut self) -> TransportState {
+    fn handshake(&mut self) {
         // Setup builder to start handshake
         let builder = Builder::new(NOISE_PATTERN.parse().unwrap());
         let static_key = builder.generate_keypair().unwrap().private;
@@ -54,24 +63,48 @@ impl Server {
             .unwrap();
 
         // Finished handshake. Switch to transport mode
-        noise.into_transport_mode().unwrap()
+        self.noise = Some(noise.into_transport_mode().unwrap());
+    }
+
+    fn send(&mut self, msg: &[u8]) {
+        if let Some(noise) = &mut self.noise {
+            let len = noise.write_message(msg, &mut self.buf).unwrap();
+            send(&mut self.stream, &self.buf[..len]);
+        }
+    }
+
+    fn recv(&mut self) -> Vec<u8> {
+        // TODO: improve error handling
+        if let Some(noise) = &mut self.noise {
+            match recv(&mut self.stream) {
+                Ok(msg) => {
+                    let len = noise.read_message(&msg, &mut self.buf).unwrap();
+                    self.buf[..len].to_vec()
+                }
+                Err(_) => vec![],
+            }
+        } else {
+            vec![]
+        }
     }
 }
 
 pub struct Client {
     stream: TcpStream,
     buf: Vec<u8>,
+    noise: Option<TransportState>,
 }
 
-impl Client {
-    pub fn new() -> Self {
+impl NoiseConnection for Client {
+    fn new() -> Self {
         Client {
             stream: TcpStream::connect("127.0.0.1:8080").unwrap(),
             buf: vec![0u8; 65535],
+            noise: None,
         }
     }
 
-    pub fn handshake(&mut self) -> TransportState {
+    fn handshake(&mut self) {
         // Setup builder to start handshake
         let builder = Builder::new(NOISE_PATTERN.parse().unwrap());
         let static_key = builder.generate_keypair().unwrap().private;
@@ -94,7 +127,30 @@ impl Client {
         let len = noise.write_message(&[], &mut self.buf).unwrap();
         send(&mut self.stream, &self.buf[..len]);
 
-        noise.into_transport_mode().unwrap()
+        self.noise = Some(noise.into_transport_mode().unwrap());
+    }
+
+
+    fn send(&mut self, msg: &[u8]) {
+        if let Some(noise) = &mut self.noise {
+            let len = noise.write_message(msg, &mut self.buf).unwrap();
+            send(&mut self.stream, &self.buf[..len]);
+        }
+    }
+
+    fn recv(&mut self) -> Vec<u8> {
+        // TODO: improve error handling
+        if let Some(noise) = &mut self.noise {
+            match recv(&mut self.stream) {
+                Ok(msg) => {
+                    let len = noise.read_message(&msg, &mut self.buf).unwrap();
+                    self.buf[..len].to_vec()
+                }
+                Err(_) => vec![],
+            }
+        } else {
+            vec![]
+        }
     }
 }
 
