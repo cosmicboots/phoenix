@@ -2,7 +2,7 @@
 
 use std::{
     io::{self, Read, Write},
-    net::{TcpListener, TcpStream},
+    net::TcpStream,
 };
 
 use snow::{Builder, TransportState};
@@ -10,7 +10,7 @@ use snow::{Builder, TransportState};
 static NOISE_PATTERN: &'static str = "Noise_XX_25519_ChaChaPoly_BLAKE2s";
 
 pub trait NoiseConnection {
-    fn new() -> Self;
+    fn new(stream: TcpStream) -> Self;
     fn handshake(&mut self);
     fn send(&mut self, msg: &[u8]);
     fn recv(&mut self) -> Vec<u8>;
@@ -23,11 +23,7 @@ pub struct Server {
 }
 
 impl NoiseConnection for Server {
-    fn new() -> Self {
-        let (stream, _) = TcpListener::bind("127.0.0.1:8080")
-            .expect("Failed to bind to server address")
-            .accept()
-            .unwrap();
+    fn new(stream: TcpStream) -> Self {
         Server {
             stream,
             buf: vec![0u8; 65535],
@@ -96,9 +92,9 @@ pub struct Client {
 }
 
 impl NoiseConnection for Client {
-    fn new() -> Self {
+    fn new(stream: TcpStream) -> Self {
         Client {
-            stream: TcpStream::connect("127.0.0.1:8080").unwrap(),
+            stream,
             buf: vec![0u8; 65535],
             noise: None,
         }
