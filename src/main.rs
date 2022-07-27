@@ -18,10 +18,13 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
+    /// Run the client
     Run {
         #[clap(short, long, action)]
         server: bool,
     },
+    /// Generate Noise keypairs
+    GenKey,
 }
 
 fn main() {
@@ -49,5 +52,9 @@ fn main() {
                 }
             }
         }
+        Command::GenKey => {
+            let keypair = net::generate_noise_keypair();
+            println!("Private: {:?}\nPublic: {:?}", base64::encode(keypair.private), base64::encode(keypair.public));
+        },
     }
 }

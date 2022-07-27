@@ -21,6 +21,7 @@ impl ServerConfig {
         }
     }
 
+    #[allow(dead_code)]
     pub fn write_config(&self, filename: &str) -> Result<(), toml::ser::Error> {
         fs::write(filename, toml::to_string(&self)?).expect("Failed to write config");
         Ok(())

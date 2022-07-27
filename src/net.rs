@@ -135,3 +135,8 @@ fn send(stream: &mut TcpStream, msg: &[u8]) {
     stream.write_all(&msg_len).unwrap();
     stream.write_all(msg).unwrap();
 }
+
+pub fn generate_noise_keypair() -> snow::Keypair {
+    let builder = Builder::new(NOISE_PATTERN.parse().unwrap());
+    builder.generate_keypair().unwrap()
+}
