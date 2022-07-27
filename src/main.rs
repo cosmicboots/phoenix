@@ -2,10 +2,12 @@
 mod db;
 mod messaging;
 mod net;
+mod server;
+mod config;
 
 use clap::{Parser, Subcommand};
 use net::NoiseConnection;
-use std::{net::{TcpListener, TcpStream}, thread, time::Duration};
+use std::net::TcpStream;
 
 #[derive(Parser)]
 #[clap(author, version, about)]
@@ -28,21 +30,7 @@ fn main() {
     match cli.command {
         Command::Run { server } => {
             if server {
-                let listener = TcpListener::bind("127.0.0.1:8080").unwrap();
-                println!("Waiting for connections...");
-                for stream in listener.incoming() {
-                    println!("Spawning connection...");
-                    thread::spawn(|| {
-                        let mut svc = net::Server::new(stream.unwrap());
-                        println!("Connection established!");
-                        svc.handshake();
-                        println!("Server completed handshake");
-                        for _ in 0..10 {
-                            let msg = messaging::MessageBuilder::decode_message(&svc.recv());
-                            println!("{msg:?}");
-                        }
-                    });
-                }
+                server::start_server();
             } else {
                 println!("Connecting...");
                 let mut client = net::Client::new(TcpStream::connect("127.0.0.1:8080").unwrap());
