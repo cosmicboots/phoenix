@@ -23,10 +23,9 @@ pub fn start_server() {
             let mut svc = Server::new(stream.unwrap());
             println!("Connection established!");
             // Complete noise handshake
-            svc.handshake();
             println!("Server completed handshake");
             for _ in 0..10 {
-                let msg = MessageBuilder::decode_message(&svc.recv());
+                let msg = MessageBuilder::decode_message(&svc.recv().unwrap());
                 println!("{msg:?}");
             }
         });

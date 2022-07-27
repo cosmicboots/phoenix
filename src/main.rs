@@ -35,7 +35,6 @@ fn main() {
                 println!("Connecting...");
                 let mut client = net::Client::new(TcpStream::connect("127.0.0.1:8080").unwrap());
                 println!("Connection established!");
-                client.handshake();
                 println!("Client completed handshake");
                 let mut builder = messaging::MessageBuilder::new(1);
                 for _ in 0..10 {
@@ -46,6 +45,7 @@ fn main() {
                     println!("Sending message... {msg:?}");
                     client.send(&msg);
                     println!("Message sent");
+                    std::thread::sleep(std::time::Duration::from_secs(5));
                 }
             }
         }
