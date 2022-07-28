@@ -1,10 +1,11 @@
 //! Phoenix main entry point
+mod client;
+mod config;
 mod messaging;
 mod net;
 mod server;
-mod config;
 
-use clap::{Parser, Subcommand};
+use clap::{ArgGroup, Parser, Subcommand};
 use net::NoiseConnection;
 use std::net::TcpStream;
 
@@ -18,9 +19,18 @@ struct Cli {
 #[derive(Subcommand)]
 enum Command {
     /// Run the client
+    #[clap(group(
+            ArgGroup::new("")
+                .required(true)
+                .args(&["server", "test-client", "file-path"]),
+            ))]
     Run {
-        #[clap(short, long, action)]
+        #[clap(long, action)]
         server: bool,
+        #[clap(long, action)]
+        test_client: bool,
+        #[clap(value_parser)]
+        file_path: Option<String>,
     },
     /// Generate Noise keypairs
     GenKey,
@@ -30,10 +40,14 @@ fn main() {
     let cli = Cli::parse();
 
     match cli.command {
-        Command::Run { server } => {
+        Command::Run {
+            server,
+            test_client,
+            file_path,
+        } => {
             if server {
                 server::start_server();
-            } else {
+            } else if test_client {
                 println!("Connecting...");
                 let mut client = net::Client::new(TcpStream::connect("127.0.0.1:8080").unwrap());
                 println!("Connection established!");
@@ -49,11 +63,22 @@ fn main() {
                     println!("Message sent");
                     std::thread::sleep(std::time::Duration::from_secs(5));
                 }
+            } else {
+                if let Some(x) = file_path {
+                    match client::get_file_info(&x) {
+                        Ok(metadata) => println!("{:?}", metadata),
+                        Err(e) => eprintln!("{}", e),
+                    }
+                }
             }
         }
         Command::GenKey => {
             let keypair = net::generate_noise_keypair();
-            println!("Private: {:?}\nPublic: {:?}", base64::encode(keypair.private), base64::encode(keypair.public));
-        },
+            println!(
+                "Private: {:?}\nPublic: {:?}",
+                base64::encode(keypair.private),
+                base64::encode(keypair.public)
+            );
+        }
     }
 }
