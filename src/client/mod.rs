@@ -1,9 +1,11 @@
 #![allow(dead_code)]
 
+use notify::{watcher, DebouncedEvent, Watcher};
 use std::{
     fs::{self, Metadata, Permissions},
-    path::Path,
-    time::SystemTime,
+    path::PathBuf,
+    sync::mpsc,
+    time::{Duration, SystemTime},
 };
 
 #[derive(Debug)]
@@ -23,7 +25,39 @@ impl From<Metadata> for FileMetadata {
     }
 }
 
-pub fn get_file_info(path: &str) -> Result<FileMetadata, std::io::Error> {
-    let md = fs::metadata(Path::new(path))?;
+pub fn start_client(path: &str) {
+    let (tx, rx) = mpsc::channel();
+    let mut watcher = watcher(tx, Duration::from_secs(1)).unwrap();
+
+    let path = PathBuf::from(path);
+
+    if !fs::metadata(&path).unwrap().is_dir() {
+        error!("Can only watch directories not files!");
+        return;
+    }
+
+    info!("Watching files");
+    watcher
+        .watch(path, notify::RecursiveMode::Recursive)
+        .unwrap();
+
+    loop {
+        match rx.recv() {
+            Ok(event) => match event {
+                DebouncedEvent::Rename(_, p)
+                | DebouncedEvent::Create(p)
+                | DebouncedEvent::Write(p)
+                | DebouncedEvent::Chmod(p) => {
+                    debug!("{:?}", get_file_info(p).unwrap());
+                }
+                _ => {}
+            },
+            Err(e) => error!("File system watch error: {:?}", e),
+        }
+    }
+}
+
+fn get_file_info(path: PathBuf) -> Result<FileMetadata, std::io::Error> {
+    let md = fs::metadata(path)?;
     Ok(FileMetadata::from(md))
 }

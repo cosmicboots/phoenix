@@ -5,7 +5,12 @@ mod messaging;
 mod net;
 mod server;
 
+#[macro_use]
+extern crate log;
+
 use clap::{ArgGroup, Parser, Subcommand};
+use client::start_client;
+use log::LevelFilter;
 use net::NoiseConnection;
 use std::net::TcpStream;
 
@@ -37,6 +42,9 @@ enum Command {
 }
 
 fn main() {
+    env_logger::Builder::from_default_env()
+        .filter_level(LevelFilter::Debug)
+        .init();
     let cli = Cli::parse();
 
     match cli.command {
@@ -65,10 +73,7 @@ fn main() {
                 }
             } else {
                 if let Some(x) = file_path {
-                    match client::get_file_info(&x) {
-                        Ok(metadata) => println!("{:?}", metadata),
-                        Err(e) => eprintln!("{}", e),
-                    }
+                    start_client(&x);
                 }
             }
         }

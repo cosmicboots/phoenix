@@ -14,3 +14,6 @@ snow = "0.9.0"
 clap = { version = "3.2.12", features = ["derive"] }
 toml = "0.5.9"
 base64 = "0.13.0"
+notify = "4.0.17"
+log = "0.4.17"
+env_logger = "0.9.0"
