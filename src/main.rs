@@ -1,5 +1,4 @@
 //! Phoenix main entry point
-mod db;
 mod messaging;
 mod net;
 mod server;
