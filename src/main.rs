@@ -8,6 +8,7 @@ mod server;
 #[macro_use]
 extern crate log;
 
+use base64ct::{Base64, Encoding};
 use clap::{ArgGroup, Parser, Subcommand};
 use client::start_client;
 use log::LevelFilter;
@@ -81,8 +82,8 @@ fn main() {
             let keypair = net::generate_noise_keypair();
             println!(
                 "Private: {:?}\nPublic: {:?}",
-                base64::encode(keypair.private),
-                base64::encode(keypair.public)
+                Base64::encode_string(&keypair.private),
+                Base64::encode_string(&keypair.public)
             );
         }
     }
