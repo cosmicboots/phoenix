@@ -4,6 +4,7 @@ use std::{fs, path::Path};
 #[derive(Debug, Deserialize, Serialize)]
 pub struct ServerConfig {
     pub bind_address: String,
+    pub privkey: String,
 }
 
 impl ServerConfig {
@@ -13,9 +14,10 @@ impl ServerConfig {
             let toml: ServerConfig = toml::from_str(&raw)?;
             Ok(toml)
         } else {
-            eprintln!("Config file doesn't exist. Using defaults.");
+            warn!("Config file doesn't exist. Using defaults.");
             let config = ServerConfig {
                 bind_address: "127.0.0.1:8080".to_string(),
+                privkey: String::new(),
             };
             Ok(config)
         }
@@ -25,5 +27,9 @@ impl ServerConfig {
     pub fn write_config(&self, filename: &str) -> Result<(), toml::ser::Error> {
         fs::write(filename, toml::to_string(&self)?).expect("Failed to write config");
         Ok(())
+    }
+
+    pub fn dump_config(&self) -> Result<String, toml::ser::Error> {
+        toml::to_string(&self)
     }
 }

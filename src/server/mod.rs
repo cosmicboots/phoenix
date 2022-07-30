@@ -5,10 +5,12 @@ use super::{
     net::{NoiseConnection, Server},
     config::ServerConfig,
 };
-use std::{net::TcpListener, thread};
+use std::{net::TcpListener, thread, sync::Arc};
 
-pub fn start_server() {
-    let config = ServerConfig::read_config("./config.toml").unwrap();
+pub fn start_server(config_file: &str) {
+    let config = ServerConfig::read_config(config_file).unwrap();
+
+    let private_key = Arc::new(config.privkey);
 
     // Construct TcpListener
     let listener = TcpListener::bind(&config.bind_address).unwrap();
@@ -18,9 +20,10 @@ pub fn start_server() {
     for stream in listener.incoming() {
         println!("Spawning connection...");
         // Spawn thread to handle each stream
-        thread::spawn(|| {
+        let pk = private_key.clone();
+        thread::spawn(move || {
             // Create new Server for use with noise layer
-            let mut svc = Server::new(stream.unwrap());
+            let mut svc = Server::new(stream.unwrap(), pk.as_bytes());
             println!("Connection established!");
             // Complete noise handshake
             println!("Server completed handshake");

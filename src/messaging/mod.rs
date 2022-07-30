@@ -33,6 +33,7 @@
 pub mod arguments;
 
 use arguments::{Argument, Version};
+use crate::common;
 
 //struct Version(u8);
 
@@ -172,11 +173,11 @@ impl MessageBuilder {
             arg = match msg.verb {
                 Directive::AnnounceVersion => Some(Box::new(arguments::Version::from_bin(&x)?)),
                 Directive::ListFiles => None,
-                Directive::RequestFile => Some(Box::new(arguments::FileId::from_bin(&x)?)),
+                Directive::RequestFile => Some(Box::new(common::FileId::from_bin(&x)?)),
                 Directive::RequestChunk => Some(Box::new(arguments::ChunkId::from_bin(&x)?)),
-                Directive::SendFile => Some(Box::new(arguments::FileMetadata::from_bin(&x)?)),
+                Directive::SendFile => Some(Box::new(common::FileMetadata::from_bin(&x)?)),
                 Directive::SendChunk => Some(Box::new(arguments::Chunk::from_bin(&x)?)),
-                Directive::DeleteFile => Some(Box::new(arguments::FileId::from_bin(&x)?)),
+                Directive::DeleteFile => Some(Box::new(common::FileId::from_bin(&x)?)),
                 Directive::Response => Some(Box::new(arguments::ResponseCode::from_bin(&x)?)),
             };
         }

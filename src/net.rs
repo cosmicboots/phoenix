@@ -5,12 +5,12 @@ use std::{
     net::TcpStream,
 };
 
-use snow::{Builder, TransportState};
+use snow::{Builder, Keypair, TransportState};
 
 static NOISE_PATTERN: &'static str = "Noise_XX_25519_ChaChaPoly_BLAKE2s";
 
 pub trait NoiseConnection {
-    fn new(stream: TcpStream) -> Self;
+    fn new(stream: TcpStream, static_key: &[u8]) -> Self;
     //fn handshake(&mut self);
     fn send(&mut self, msg: &[u8]);
     fn recv(&mut self) -> io::Result<Vec<u8>>;
@@ -23,12 +23,12 @@ pub struct Server {
 }
 
 impl NoiseConnection for Server {
-    fn new(mut stream: TcpStream) -> Self {
+    fn new(mut stream: TcpStream, static_key: &[u8]) -> Self {
         let mut buf = vec![0u8; 65535];
 
         // Setup builder to start handshake
         let builder = Builder::new(NOISE_PATTERN.parse().unwrap());
-        let static_key = builder.generate_keypair().unwrap().private;
+        //let static_key = builder.generate_keypair().unwrap().private;
         let mut noise = builder
             .local_private_key(&static_key)
             .build_responder()
@@ -77,7 +77,7 @@ pub struct Client {
 }
 
 impl NoiseConnection for Client {
-    fn new(mut stream: TcpStream) -> Self {
+    fn new(mut stream: TcpStream, static_key: &[u8]) -> Self {
         let mut buf = vec![0u8; 65535];
 
         // Setup builder to start handshake
@@ -136,7 +136,7 @@ fn send(stream: &mut TcpStream, msg: &[u8]) {
     stream.write_all(msg).unwrap();
 }
 
-pub fn generate_noise_keypair() -> snow::Keypair {
+pub fn generate_noise_keypair() -> Keypair {
     let builder = Builder::new(NOISE_PATTERN.parse().unwrap());
     builder.generate_keypair().unwrap()
 }
