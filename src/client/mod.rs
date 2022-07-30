@@ -8,6 +8,12 @@ use std::{
     time::{Duration, SystemTime},
 };
 
+mod file_operations;
+
+use file_operations::{chunk_file, get_file_info};
+
+use crate::client::file_operations::send_file;
+
 #[derive(Debug)]
 pub struct FileMetadata {
     permissions: Permissions,
@@ -33,7 +39,7 @@ pub fn start_client(path: &str) {
 
     if !fs::metadata(&path).unwrap().is_dir() {
         error!("Can only watch directories not files!");
-        return;
+        std::process::exit(1);
     }
 
     info!("Watching files");
@@ -48,16 +54,13 @@ pub fn start_client(path: &str) {
                 | DebouncedEvent::Create(p)
                 | DebouncedEvent::Write(p)
                 | DebouncedEvent::Chmod(p) => {
-                    debug!("{:?}", get_file_info(p).unwrap());
+                    debug!("{:?}", get_file_info(&p).unwrap());
+                    let chk_file = chunk_file(&p).unwrap();
+                    send_file(chk_file);
                 }
                 _ => {}
             },
             Err(e) => error!("File system watch error: {:?}", e),
         }
     }
-}
-
-fn get_file_info(path: PathBuf) -> Result<FileMetadata, std::io::Error> {
-    let md = fs::metadata(path)?;
-    Ok(FileMetadata::from(md))
 }
