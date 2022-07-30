@@ -1,6 +1,5 @@
 // Directive specific abstractions for parsing the byte array argument data
 use core::fmt::Debug;
-use crate::common::*;
 
 #[derive(Debug, PartialEq)]
 pub struct Error(String);
@@ -24,6 +23,9 @@ impl Argument for Version {
         Ok(Version(ver[0]))
     }
 }
+
+#[derive(Debug, PartialEq)]
+pub struct FileId(pub String);
 
 impl Argument for FileId {
     fn to_bin(self: &Self) -> Vec<u8> {
@@ -52,6 +54,13 @@ impl Argument for ChunkId {
             Err(e) => Err(Error("Failed to parse ChunkId".to_owned())),
         }
     }
+}
+
+#[derive(Debug, PartialEq)]
+pub struct FileMetadata {
+    file_id: FileId,
+    file_name: String,
+    file_size: usize,
 }
 
 impl Argument for FileMetadata {
