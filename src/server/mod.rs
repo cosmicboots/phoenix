@@ -1,16 +1,16 @@
 #![allow(dead_code)]
 
+use base64ct::{Base64, Encoding};
+
 use super::{
+    config::{Config, ServerConfig},
     messaging::MessageBuilder,
     net::{NoiseConnection, Server},
-    config::ServerConfig,
 };
-use std::{net::TcpListener, thread, sync::Arc};
+use std::{net::TcpListener, sync::Arc, thread};
 
 pub fn start_server(config_file: &str) {
-    let config = ServerConfig::read_config(config_file).unwrap();
-
-    let private_key = Arc::new(config.privkey);
+    let config = Arc::new(ServerConfig::read_config(config_file).unwrap());
 
     // Construct TcpListener
     let listener = TcpListener::bind(&config.bind_address).unwrap();
@@ -20,17 +20,21 @@ pub fn start_server(config_file: &str) {
     for stream in listener.incoming() {
         println!("Spawning connection...");
         // Spawn thread to handle each stream
-        let pk = private_key.clone();
+        let config = config.clone();
         thread::spawn(move || {
             // Create new Server for use with noise layer
-            let mut svc = Server::new(stream.unwrap(), pk.as_bytes());
-            println!("Connection established!");
+            let mut svc = Server::new(
+                stream.unwrap(),
+                &Base64::decode_vec(&config.privkey).unwrap(),
+                &Base64::decode_vec(&config.clients[0]).unwrap(),
+            );
+            info!("Connection established!");
             // Complete noise handshake
-            println!("Server completed handshake");
-            for _ in 0..10 {
-                let msg = MessageBuilder::decode_message(&svc.recv().unwrap());
-                println!("{msg:?}");
+            info!("Server completed handshake");
+            while let Ok(msg) = &svc.recv() {
+                println!("{:?}", MessageBuilder::decode_message(msg));
             }
+            info!("Client disconnected");
         });
     }
 }

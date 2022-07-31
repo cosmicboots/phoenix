@@ -1,8 +1,10 @@
 #![allow(dead_code)]
 
+use base64ct::{Base64, Encoding};
 use notify::{watcher, DebouncedEvent, Watcher};
 use std::{
     fs::{self, Metadata, Permissions},
+    net::TcpStream,
     path::PathBuf,
     sync::mpsc,
     time::{Duration, SystemTime},
@@ -12,7 +14,11 @@ mod file_operations;
 
 use file_operations::{chunk_file, get_file_info};
 
-use crate::client::file_operations::send_file;
+use crate::{
+    client::file_operations::send_file,
+    config::{ClientConfig, Config},
+    net::{Client, NoiseConnection}, messaging::{self, Directive, arguments},
+};
 
 #[derive(Debug)]
 pub struct FileMetadata {
@@ -31,7 +37,20 @@ impl From<Metadata> for FileMetadata {
     }
 }
 
-pub fn start_client(path: &str) {
+pub fn start_client(config_file: &str, path: &str) {
+    let config = ClientConfig::read_config(config_file).unwrap();
+
+    let mut client = Client::new(
+        TcpStream::connect(config.server_address).unwrap(),
+        &Base64::decode_vec(&config.privkey).unwrap(),
+        &Base64::decode_vec(&config.server_pubkey).unwrap(),
+    );
+
+    let mut builder = messaging::MessageBuilder::new(1);
+    let msg = builder.encode_message(Directive::AnnounceVersion, Some(arguments::Version(1)));
+
+    client.send(&msg);
+
     let (tx, rx) = mpsc::channel();
     let mut watcher = watcher(tx, Duration::from_secs(1)).unwrap();
 
