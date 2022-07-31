@@ -17,7 +17,8 @@ use file_operations::{chunk_file, get_file_info};
 use crate::{
     client::file_operations::send_file,
     config::{ClientConfig, Config},
-    net::{Client, NoiseConnection}, messaging::{self, Directive, arguments},
+    messaging::{self, arguments, Directive},
+    net::{Client, NoiseConnection},
 };
 
 #[derive(Debug)]
@@ -43,13 +44,13 @@ pub fn start_client(config_file: &str, path: &str) {
     let mut client = Client::new(
         TcpStream::connect(config.server_address).unwrap(),
         &Base64::decode_vec(&config.privkey).unwrap(),
-        &Base64::decode_vec(&config.server_pubkey).unwrap(),
-    );
+        &[Base64::decode_vec(&config.server_pubkey).unwrap()],
+    ).unwrap();
 
     let mut builder = messaging::MessageBuilder::new(1);
     let msg = builder.encode_message(Directive::AnnounceVersion, Some(arguments::Version(1)));
 
-    client.send(&msg);
+    client.send(&msg).unwrap();
 
     let (tx, rx) = mpsc::channel();
     let mut watcher = watcher(tx, Duration::from_secs(1)).unwrap();

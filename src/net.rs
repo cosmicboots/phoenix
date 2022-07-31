@@ -2,7 +2,7 @@
 
 use std::{
     io::{self, Read, Write},
-    net::TcpStream,
+    net::TcpStream, error::Error,
 };
 
 use base64ct::{Base64, Encoding};
@@ -11,9 +11,16 @@ use snow::{Builder, Keypair, TransportState};
 static NOISE_PATTERN: &'static str = "Noise_IK_25519_ChaChaPoly_BLAKE2s";
 
 pub trait NoiseConnection {
-    fn new(stream: TcpStream, static_key: &[u8], remote_key: &[u8]) -> Self;
-    fn send(&mut self, msg: &[u8]);
-    fn recv(&mut self) -> io::Result<Vec<u8>>;
+    fn new(
+        stream: TcpStream,
+        static_key: &[u8],
+        remote_keys: &[Vec<u8>],
+    ) -> Result<Self, snow::Error>
+    where
+        Self: Sized;
+    fn send(&mut self, msg: &[u8]) -> Result<(), snow::Error>;
+    // TODO: A box probably isn't the best solution. Using for now.
+    fn recv(&mut self) -> Result<Vec<u8>, Box<dyn Error>>;
 }
 
 pub struct Server {
@@ -23,44 +30,51 @@ pub struct Server {
 }
 
 impl NoiseConnection for Server {
-    fn new(mut stream: TcpStream, static_key: &[u8], _: &[u8]) -> Self {
+    fn new(
+        mut stream: TcpStream,
+        static_key: &[u8],
+        remote_keys: &[Vec<u8>],
+    ) -> Result<Self, snow::Error> {
         let mut buf = vec![0u8; 65535];
 
         // Setup builder to start handshake
         let builder = Builder::new(NOISE_PATTERN.parse().unwrap());
-        let mut noise = builder
-            .local_private_key(static_key)
-            .build_responder()
-            .unwrap();
+        let mut noise = builder.local_private_key(static_key).build_responder()?;
 
         // <- e, es, s, ss
-        noise
-            .read_message(&recv(&mut stream).unwrap(), &mut buf)
-            .unwrap();
+        noise.read_message(&recv(&mut stream).unwrap(), &mut buf)?;
 
         // At this point, we have the initiator's static key and we can check if it's in our
         // allowed list of keys
-        debug!("Initiator's public key: {:?}", Base64::encode_string(noise.get_remote_static().unwrap()));
+        debug!(
+            "Initiator's public key: {}",
+            Base64::encode_string(noise.get_remote_static().unwrap())
+        );
+
+        let is = noise.get_remote_static().unwrap();
+        if !remote_keys.contains(&is.to_vec()) {
+            error!("Remote public key isn't known");
+        }
 
         // -> e, ee, se
-        let len = noise.write_message(&[0u8; 0], &mut buf).unwrap();
+        let len = noise.write_message(&[0u8; 0], &mut buf)?;
         send(&mut stream, &buf[..len]);
 
         // Finished handshake. Switch to transport mode
-        let noise = noise.into_transport_mode().unwrap();
-        Server { stream, buf, noise }
+        let noise = noise.into_transport_mode()?;
+        Ok(Server { stream, buf, noise })
     }
 
-    fn send(&mut self, msg: &[u8]) {
-        let len = self.noise.write_message(msg, &mut self.buf).unwrap();
+    fn send(&mut self, msg: &[u8]) -> Result<(), snow::Error> {
+        let len = self.noise.write_message(msg, &mut self.buf)?;
         send(&mut self.stream, &self.buf[..len]);
+        Ok(())
     }
 
-    fn recv(&mut self) -> io::Result<Vec<u8>> {
+    fn recv(&mut self) -> Result<Vec<u8>, Box<dyn Error>> {
         let len = self
             .noise
-            .read_message(&recv(&mut self.stream)?, &mut self.buf)
-            .unwrap();
+            .read_message(&recv(&mut self.stream)?, &mut self.buf)?;
         Ok(self.buf[..len].to_vec())
     }
 }
@@ -72,7 +86,11 @@ pub struct Client {
 }
 
 impl NoiseConnection for Client {
-    fn new(mut stream: TcpStream, static_key: &[u8], remote_key: &[u8]) -> Self {
+    fn new(
+        mut stream: TcpStream,
+        static_key: &[u8],
+        remote_keys: &[Vec<u8>],
+    ) -> Result<Self, snow::Error> {
         let mut buf = vec![0u8; 65535];
 
         // Setup builder to start handshake
@@ -80,7 +98,7 @@ impl NoiseConnection for Client {
 
         let mut noise = builder
             .local_private_key(static_key)
-            .remote_public_key(remote_key)
+            .remote_public_key(&remote_keys[0])
             .build_initiator()
             .unwrap();
 
@@ -93,27 +111,20 @@ impl NoiseConnection for Client {
             .read_message(&recv(&mut stream).unwrap(), &mut buf)
             .unwrap();
 
-        debug!(
-            "Handshake finished....?: {}",
-            <base64ct::Base64 as base64ct::Encoding>::encode_string(
-                noise.get_remote_static().unwrap()
-            )
-        );
-
         let noise = noise.into_transport_mode().unwrap();
-        Client { stream, buf, noise }
+        Ok(Client { stream, buf, noise })
     }
 
-    fn send(&mut self, msg: &[u8]) {
+    fn send(&mut self, msg: &[u8]) -> Result<(), snow::Error>{
         let len = self.noise.write_message(msg, &mut self.buf).unwrap();
         send(&mut self.stream, &self.buf[..len]);
+        Ok(())
     }
 
-    fn recv(&mut self) -> io::Result<Vec<u8>> {
+    fn recv(&mut self) -> Result<Vec<u8>, Box<dyn Error>> {
         let len = self
             .noise
-            .read_message(&recv(&mut self.stream)?, &mut self.buf)
-            .unwrap();
+            .read_message(&recv(&mut self.stream)?, &mut self.buf)?;
         Ok(self.buf[..len].to_vec())
     }
 }

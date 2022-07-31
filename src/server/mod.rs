@@ -26,8 +26,12 @@ pub fn start_server(config_file: &str) {
             let mut svc = Server::new(
                 stream.unwrap(),
                 &Base64::decode_vec(&config.privkey).unwrap(),
-                &Base64::decode_vec(&config.clients[0]).unwrap(),
-            );
+                &config
+                    .clients
+                    .iter()
+                    .map(|x| Base64::decode_vec(x).unwrap())
+                    .collect::<Vec<Vec<u8>>>()[..],
+            ).unwrap();
             info!("Connection established!");
             // Complete noise handshake
             info!("Server completed handshake");

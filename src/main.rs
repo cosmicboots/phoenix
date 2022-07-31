@@ -14,8 +14,6 @@ use clap::{ArgGroup, Parser, Subcommand};
 use client::start_client;
 use config::{ClientConfig, Config, ServerConfig};
 use log::LevelFilter;
-use net::NoiseConnection;
-use std::net::TcpStream;
 
 #[derive(Parser)]
 #[clap(author, version, about)]
@@ -33,13 +31,11 @@ enum Command {
     #[clap(group(
             ArgGroup::new("")
                 .required(true)
-                .args(&["server", "test-client", "file-path"]),
+                .args(&["server", "file-path"]),
             ))]
     Run {
         #[clap(long, action)]
         server: bool,
-        #[clap(long, action)]
-        test_client: bool,
         #[clap(value_parser)]
         file_path: Option<String>,
     },
@@ -69,30 +65,9 @@ fn main() {
     let config_file = find_config(cli.config);
 
     match cli.command {
-        Command::Run {
-            server,
-            test_client,
-            file_path,
-        } => {
+        Command::Run { server, file_path } => {
             if server {
                 server::start_server(&config_file);
-            } else if test_client {
-                println!("Connecting...");
-                let mut client =
-                    net::Client::new(TcpStream::connect("127.0.0.1:8080").unwrap(), "".as_bytes(), "".as_bytes());
-                println!("Connection established!");
-                println!("Client completed handshake");
-                let mut builder = messaging::MessageBuilder::new(1);
-                for _ in 0..10 {
-                    let msg = builder.encode_message(
-                        messaging::Directive::AnnounceVersion,
-                        Some(messaging::arguments::Version(1)),
-                    );
-                    println!("Sending message... {msg:?}");
-                    client.send(&msg);
-                    println!("Message sent");
-                    //std::thread::sleep(std::time::Duration::from_secs(1));
-                }
             } else {
                 if let Some(arg) = file_path {
                     start_client(&config_file, &arg);
@@ -123,7 +98,10 @@ fn main() {
     }
 }
 
-fn handle_dump_config<T>(config: T, file_path: Option<String>, write: bool) where T: Config {
+fn handle_dump_config<T>(config: T, file_path: Option<String>, write: bool)
+where
+    T: Config,
+{
     if write {
         config.write_config(&file_path.unwrap()).unwrap();
     } else {
