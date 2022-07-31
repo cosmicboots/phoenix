@@ -6,7 +6,7 @@ use std::{
 
 use sha2::{Digest, Sha256};
 
-use super::FileMetadata;
+use crate::messaging::arguments::{FileId, FileMetadata};
 
 #[derive(Debug)]
 pub struct ChunkedFile {
@@ -14,7 +14,7 @@ pub struct ChunkedFile {
     chunk_size: u64,
 }
 
-pub fn send_file(_file: ChunkedFile) {
+pub fn send_file_info(file: FileMetadata) {
     todo!()
 }
 
@@ -37,5 +37,6 @@ pub fn chunk_file(path: &Path) -> Result<ChunkedFile, io::Error> {
 
 pub fn get_file_info(path: &Path) -> Result<FileMetadata, std::io::Error> {
     let md = fs::metadata(path)?;
-    Ok(FileMetadata::from(md))
+    let file_id = FileId::new(path.to_owned()).unwrap();
+    Ok(FileMetadata::new(file_id, md).unwrap())
 }

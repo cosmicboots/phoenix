@@ -2,41 +2,18 @@
 
 use base64ct::{Base64, Encoding};
 use notify::{watcher, DebouncedEvent, Watcher};
-use std::{
-    fs::{self, Metadata, Permissions},
-    net::TcpStream,
-    path::PathBuf,
-    sync::mpsc,
-    time::{Duration, SystemTime},
-};
+use std::{fs, net::TcpStream, path::PathBuf, sync::mpsc, time::Duration};
 
 mod file_operations;
 
-use file_operations::{chunk_file, get_file_info};
+use file_operations::get_file_info;
 
 use crate::{
-    client::file_operations::send_file,
+    client::file_operations::send_file_info,
     config::{ClientConfig, Config},
     messaging::{self, arguments, Directive},
     net::{Client, NoiseConnection},
 };
-
-#[derive(Debug)]
-pub struct FileMetadata {
-    permissions: Permissions,
-    modified: SystemTime,
-    created: SystemTime,
-}
-
-impl From<Metadata> for FileMetadata {
-    fn from(metadata: Metadata) -> Self {
-        Self {
-            permissions: metadata.permissions(),
-            modified: metadata.modified().unwrap(),
-            created: metadata.created().unwrap(),
-        }
-    }
-}
 
 pub fn start_client(config_file: &str, path: &str) {
     let config = ClientConfig::read_config(config_file).unwrap();
@@ -45,7 +22,8 @@ pub fn start_client(config_file: &str, path: &str) {
         TcpStream::connect(config.server_address).unwrap(),
         &Base64::decode_vec(&config.privkey).unwrap(),
         &[Base64::decode_vec(&config.server_pubkey).unwrap()],
-    ).unwrap();
+    )
+    .unwrap();
 
     let mut builder = messaging::MessageBuilder::new(1);
     let msg = builder.encode_message(Directive::AnnounceVersion, Some(arguments::Version(1)));
@@ -74,9 +52,9 @@ pub fn start_client(config_file: &str, path: &str) {
                 | DebouncedEvent::Create(p)
                 | DebouncedEvent::Write(p)
                 | DebouncedEvent::Chmod(p) => {
-                    debug!("{:?}", get_file_info(&p).unwrap());
-                    let chk_file = chunk_file(&p).unwrap();
-                    send_file(chk_file);
+                    let file_info = get_file_info(&p).unwrap();
+                    debug!("{:?}", file_info);
+                    send_file_info(file_info);
                 }
                 _ => {}
             },
