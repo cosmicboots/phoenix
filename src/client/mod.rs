@@ -30,15 +30,15 @@ pub fn start_client(config_file: &str, path: &str) {
 
     client.send(&msg).unwrap();
 
-    let (tx, rx) = mpsc::channel();
-    let mut watcher = watcher(tx, Duration::from_secs(1)).unwrap();
-
     let path = PathBuf::from(path);
 
     if !fs::metadata(&path).unwrap().is_dir() {
         error!("Can only watch directories not files!");
         std::process::exit(1);
     }
+
+    let (tx, rx) = mpsc::channel();
+    let mut watcher = watcher(tx, Duration::from_secs(1)).unwrap();
 
     info!("Watching files");
     watcher
@@ -54,7 +54,10 @@ pub fn start_client(config_file: &str, path: &str) {
                 | DebouncedEvent::Chmod(p) => {
                     let file_info = get_file_info(&p).unwrap();
                     debug!("{:?}", file_info);
-                    send_file_info(file_info);
+                    match send_file_info(&mut builder, &mut client, file_info) {
+                        Ok(_) => info!("Successfully sent the file"),
+                        Err(e) => error!("{:?}", e),
+                    };
                 }
                 _ => {}
             },

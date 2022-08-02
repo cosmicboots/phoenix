@@ -6,7 +6,7 @@ use std::{
 
 use sha2::{Digest, Sha256};
 
-use crate::messaging::arguments::{FileId, FileMetadata};
+use crate::{messaging::{arguments::{FileId, FileMetadata}, MessageBuilder, Directive}, net::{Client, NoiseConnection}};
 
 #[derive(Debug)]
 pub struct ChunkedFile {
@@ -14,8 +14,10 @@ pub struct ChunkedFile {
     chunk_size: u64,
 }
 
-pub fn send_file_info(file: FileMetadata) {
-    todo!()
+pub fn send_file_info(builder: &mut MessageBuilder, client: &mut Client, file: FileMetadata) -> Result<(), snow::Error> {
+    let msg = builder.encode_message(Directive::SendFile, Some(file));
+    client.send(&msg)?;
+    Ok(())
 }
 
 /// Calculate chunk boundries and file hash

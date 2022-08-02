@@ -4,8 +4,9 @@ use sha2::{Digest, Sha256};
 use std::{
     fs::{File, Metadata, Permissions},
     io,
+    os::unix::prelude::PermissionsExt,
     path::PathBuf,
-    time::SystemTime,
+    time, vec,
 };
 
 #[derive(Debug, PartialEq)]
@@ -95,8 +96,8 @@ pub struct FileMetadata {
     file_id: FileId,
     file_name: String,
     pub permissions: Permissions,
-    pub modified: SystemTime,
-    pub created: SystemTime,
+    pub modified: u128,
+    pub created: u128,
 }
 
 impl FileMetadata {
@@ -111,19 +112,63 @@ impl FileMetadata {
                 .to_owned(),
             file_id,
             permissions: metadata.permissions(),
-            modified: metadata.modified()?,
-            created: metadata.created()?,
+            modified: metadata
+                .modified()?
+                .duration_since(time::UNIX_EPOCH)
+                .unwrap()
+                .as_millis(),
+            created: metadata
+                .created()?
+                .duration_since(time::UNIX_EPOCH)
+                .unwrap()
+                .as_millis(),
         })
     }
 }
 
 impl Argument for FileMetadata {
     fn to_bin(self: &Self) -> Vec<u8> {
-        todo!()
+        let mut buf: Vec<u8> = vec![];
+
+        let path = self.file_id.path.to_str().unwrap().as_bytes();
+        buf.extend_from_slice(&(path.len() as u64).to_be_bytes());
+        buf.extend_from_slice(path);
+
+        buf.extend_from_slice(&self.permissions.mode().to_be_bytes());
+        buf.extend_from_slice(&self.modified.to_be_bytes());
+        buf.extend_from_slice(&self.created.to_be_bytes());
+        buf.extend_from_slice(&self.file_id.hash);
+        buf
     }
 
     fn from_bin(data: &[u8]) -> Result<Self, Error> {
-        todo!()
+        let mut buf = [0u8; 8];
+        buf.copy_from_slice(&data[0..8]);
+        let end = 8 + u64::from_be_bytes(buf) as usize;
+        let path = PathBuf::from(String::from_utf8(data[8..(end)].to_vec()).unwrap());
+
+        let mut buf = [0u8; 4];
+        buf.copy_from_slice(&data[end..end + 4]);
+        let permissions: Permissions = PermissionsExt::from_mode(u32::from_be_bytes(buf));
+
+        let end = end + 4;
+        let mut buf = [0u8; 16];
+        buf.copy_from_slice(&data[end..end + 16]);
+        let modified = u128::from_be_bytes(buf);
+        buf.copy_from_slice(&data[end + 16..end + 32]);
+        let created = u128::from_be_bytes(buf);
+
+        let end = end + 32;
+        let mut hash = [0u8; 32];
+        hash.copy_from_slice(&data[end..end + 32]);
+
+        Ok(FileMetadata {
+            file_name: path.file_name().unwrap().to_str().unwrap().to_owned(),
+            file_id: FileId { path, hash },
+            permissions,
+            modified,
+            created,
+        })
     }
 }
 
