@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use std::{fs, path::Path};
+use std::{fs, path::{Path, PathBuf}};
 
 pub trait Config: Serialize {
     fn read_config(filename: &str) -> Result<Self, toml::de::Error>
@@ -20,6 +20,7 @@ pub trait Config: Serialize {
 pub struct ServerConfig {
     pub bind_address: String,
     pub privkey: String,
+    pub storage_path: PathBuf,
     pub clients: Vec<String>,
 }
 
@@ -34,6 +35,7 @@ impl Config for ServerConfig {
             let config = ServerConfig {
                 bind_address: "127.0.0.1:8080".to_string(),
                 privkey: String::new(),
+                storage_path: PathBuf::new(),
                 clients: vec![],
             };
             Ok(config)

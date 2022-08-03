@@ -1,6 +1,10 @@
 #![allow(dead_code)]
 
+mod db;
+
 use base64ct::{Base64, Encoding};
+
+use db::Db;
 
 use super::{
     config::{Config, ServerConfig},
@@ -12,6 +16,8 @@ use std::{net::TcpListener, sync::Arc, thread};
 pub fn start_server(config_file: &str) {
     let config = Arc::new(ServerConfig::read_config(config_file).unwrap());
 
+    let db = Arc::new(Db::new(&config.storage_path).expect("Failed to open database"));
+
     // Construct TcpListener
     let listener = TcpListener::bind(&config.bind_address).unwrap();
 
@@ -21,6 +27,7 @@ pub fn start_server(config_file: &str) {
         println!("Spawning connection...");
         // Spawn thread to handle each stream
         let config = config.clone();
+        let db = db.clone();
         thread::spawn(move || {
             // Create new Server for use with noise layer
             let mut svc = Server::new(

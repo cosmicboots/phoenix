@@ -2,6 +2,8 @@
 
 #![allow(dead_code)]
 
+use std::path::Path;
+
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use serde::{Deserialize, Serialize};
 use sled::{transaction::ConflictableTransactionResult, Transactional, Tree};
@@ -12,8 +14,6 @@ static FILE_TABLE: &str = "file_table";
 static CHUNK_TABLE: &str = "chunk_table";
 /// Static name of the chunk_count table
 static CHUNK_COUNT: &str = "chunk_count";
-/// Static name of the entire database
-static DB_NAME: &str = "data";
 
 #[derive(Serialize, Deserialize, Debug, PartialEq)]
 /// Structure to store needed metadata for a file
@@ -56,8 +56,8 @@ impl Db {
     /// - [`FILE_TABLE`](static.FILE_TABLE.html)
     /// - [`CHUNK_TABLE`](static.CHUNK_TABLE.html)
     /// - [`CHUNK_COUNT`](static.CHUNK_COUNT.html)
-    pub fn new() -> sled::Result<Db> {
-        let db = sled::open(DB_NAME)?;
+    pub fn new(path: &Path) -> sled::Result<Db> {
+        let db = sled::open(path)?;
         Ok(Db {
             file_table: db.open_tree(FILE_TABLE)?,
             chunk_table: db.open_tree(CHUNK_TABLE)?,
@@ -205,7 +205,7 @@ impl Db {
 
 #[cfg(test)]
 mod tests {
-    use std::panic;
+    use std::{panic, path::PathBuf, str::FromStr};
 
     use super::*;
 
@@ -223,7 +223,7 @@ mod tests {
     //#[test]
     fn test_file_db() {
         run_test(|| {
-            let db = Db::new().unwrap();
+            let db = Db::new(&PathBuf::from_str("testingdb").unwrap()).unwrap();
             let f = File {
                 filename: String::from("filename.txt"),
                 chunks: vec![String::from("chunk1")],
@@ -237,7 +237,7 @@ mod tests {
     //#[test]
     fn test_file_rm() {
         run_test(|| {
-            let db = Db::new().unwrap();
+            let db = Db::new(&PathBuf::from_str("testingdb").unwrap()).unwrap();
             let f = File {
                 filename: String::from("filename.txt"),
                 chunks: vec![String::from("chunk1")],
