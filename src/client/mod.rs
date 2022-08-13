@@ -6,33 +6,29 @@ use std::{fs, net::TcpStream, path::PathBuf, sync::mpsc, time::Duration};
 
 mod file_operations;
 
-use file_operations::get_file_info;
+use file_operations::{get_file_info, Client};
 
 use crate::{
-    client::file_operations::send_file_info,
     config::{ClientConfig, Config},
-    messaging::{self, arguments, Directive},
-    net::{Client, NoiseConnection},
+    messaging,
+    net::{NetClient, NoiseConnection},
 };
 
 pub fn start_client(config_file: &str, path: &str) {
     let config = ClientConfig::read_config(config_file).unwrap();
 
-    let mut client = Client::new(
+    let net_client = NetClient::new(
         TcpStream::connect(config.server_address).unwrap(),
         &Base64::decode_vec(&config.privkey).unwrap(),
         &[Base64::decode_vec(&config.server_pubkey).unwrap()],
     )
     .unwrap();
+    let builder = messaging::MessageBuilder::new(1);
+    let client = Client::new(builder, net_client);
 
-    let mut builder = messaging::MessageBuilder::new(1);
-    let msg = builder.encode_message(Directive::AnnounceVersion, Some(arguments::Version(1)));
+    let watch_path = PathBuf::from(path);
 
-    client.send(&msg).unwrap();
-
-    let path = PathBuf::from(path);
-
-    if !fs::metadata(&path).unwrap().is_dir() {
+    if !fs::metadata(&watch_path).unwrap().is_dir() {
         error!("Can only watch directories not files!");
         std::process::exit(1);
     }
@@ -42,7 +38,7 @@ pub fn start_client(config_file: &str, path: &str) {
 
     info!("Watching files");
     watcher
-        .watch(path, notify::RecursiveMode::Recursive)
+        .watch(watch_path, notify::RecursiveMode::Recursive)
         .unwrap();
 
     loop {
@@ -54,7 +50,7 @@ pub fn start_client(config_file: &str, path: &str) {
                 | DebouncedEvent::Chmod(p) => {
                     let file_info = get_file_info(&p).unwrap();
                     debug!("{:?}", file_info);
-                    match send_file_info(&mut builder, &mut client, file_info) {
+                    match client.send_file_info(file_info) {
                         Ok(_) => info!("Successfully sent the file"),
                         Err(e) => error!("{:?}", e),
                     };

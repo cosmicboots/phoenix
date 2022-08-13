@@ -72,13 +72,13 @@ pub trait NoiseConnection {
     fn recv(&mut self) -> Result<Vec<u8>, Box<dyn Error>>;
 }
 
-pub struct Server {
+pub struct NetServer {
     stream: TcpStream,
     buf: Vec<u8>,
     noise: TransportState,
 }
 
-impl NoiseConnection for Server {
+impl NoiseConnection for NetServer {
     fn new(
         mut stream: TcpStream,
         static_key: &[u8],
@@ -111,7 +111,7 @@ impl NoiseConnection for Server {
 
         // Finished handshake. Switch to transport mode
         let noise = noise.into_transport_mode()?;
-        Ok(Server { stream, buf, noise })
+        Ok(NetServer { stream, buf, noise })
     }
 
     fn send(&mut self, msg: &[u8]) -> Result<(), snow::Error> {
@@ -128,13 +128,13 @@ impl NoiseConnection for Server {
     }
 }
 
-pub struct Client {
+pub struct NetClient {
     stream: TcpStream,
     buf: Vec<u8>,
     noise: TransportState,
 }
 
-impl NoiseConnection for Client {
+impl NoiseConnection for NetClient {
     fn new(
         mut stream: TcpStream,
         static_key: &[u8],
@@ -161,7 +161,7 @@ impl NoiseConnection for Client {
             .unwrap();
 
         let noise = noise.into_transport_mode().unwrap();
-        Ok(Client { stream, buf, noise })
+        Ok(NetClient { stream, buf, noise })
     }
 
     fn send(&mut self, msg: &[u8]) -> Result<(), snow::Error> {

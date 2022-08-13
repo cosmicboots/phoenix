@@ -93,6 +93,13 @@ impl TryFrom<u16> for Directive {
 }
 
 /// This is the main structure for every message sent over the network.
+#[derive(Debug)]
+pub struct Message {
+    pub id: u16,
+    pub verb: Directive,
+    pub argument: Option<Box<dyn Argument>>,
+}
+
 #[derive(PartialEq, Debug)]
 struct RawMessage {
     id: u16,
@@ -214,13 +221,6 @@ impl MessageBuilder {
     pub fn increment_counter(&mut self) {
         self.current_request += 1;
     }
-}
-
-#[derive(Debug)]
-pub struct Message {
-    pub id: u16,
-    pub verb: Directive,
-    pub argument: Option<Box<dyn Argument>>,
 }
 
 #[cfg(test)]
