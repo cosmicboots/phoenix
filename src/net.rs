@@ -1,8 +1,57 @@
 #![allow(dead_code)]
+//! Network module. Main purpose is to wrap traffic in the noise protocol.
+//!
+//! This is only a lightweight wrapper for handling noise protocol connections using Snow.
+//! This module needs to be used in conjunction with [`messaging`](../messaging/index.html) to
+//! successfully send messages.
+//!
+//! The two main structs are the [`client`](struct.Client.html) and [`server`](struct.Server.html),
+//! which both implement the [`NoiseConnection`](trait.NoiseConnection.html) trait.
+//!
+//! ## Server Example
+//!
+//! ```rust
+//! // Construct TcpListener
+//! let listener = TcpListener::bind("127.0.0.1:8080").unwrap();
+//! // Iterate through connections
+//! for stream in listener.incoming() {
+//!     let mut server = Server::new(
+//!         stream.unwrap(),
+//!         &noise_private_key,
+//!         &valid_client_pubkeys,
+//!     ).unwrap()
+//!     
+//!     // Receive message
+//!     if let Ok(msg) = &server.recv() {
+//!         println!("{:?}", msg);
+//!     }
+//! }
+//! ```
+//! **Note:** _The above example only allows a single TCP connection at a time._
+//!
+//! ## Client example
+//!
+//! ```rust
+//! // Create client to wrap messages with the noise protocol
+//! let mut client = Client::new(
+//!     TcpStream::connect("127.0.0.1:8080").unwrap(),
+//!     &noise_private_key,
+//!     &[server_public_key],
+//! )
+//! .unwrap();
+//!
+//! // Create MessageBuilder to create messages to send
+//! let mut builder = messaging::MessageBuilder::new(1);
+//! // Create a message
+//! let msg = builder.encode_message(Directive::AnnounceVersion, Some(arguments::Version(1)));
+//! // Send the message
+//! client.send(&msg).unwrap();
+//! ```
 
 use std::{
+    error::Error,
     io::{self, Read, Write},
-    net::TcpStream, error::Error,
+    net::TcpStream,
 };
 
 use base64ct::{Base64, Encoding};
@@ -115,7 +164,7 @@ impl NoiseConnection for Client {
         Ok(Client { stream, buf, noise })
     }
 
-    fn send(&mut self, msg: &[u8]) -> Result<(), snow::Error>{
+    fn send(&mut self, msg: &[u8]) -> Result<(), snow::Error> {
         let len = self.noise.write_message(msg, &mut self.buf).unwrap();
         send(&mut self.stream, &self.buf[..len]);
         Ok(())

@@ -4,6 +4,29 @@
 //! It also implements the `From` traits between `Vec<u8>`/`&[u8]` and
 //! [`Message`](struct.Message.html).
 //!
+//! ## Design
+//!
+//! The network protocol follows a very simple messaging structure.
+//!
+//! Each message sent over the network should be encoded in binary and structured as follows:
+//!
+//! ```
+//! <msg-num:u16> <verb:u16> [<argument>]
+//! ```
+//!
+//! - `msg-num` is a 16-bit unsigned integer that represents each network packet with a unique
+//! number.
+//! - `verb` is a 16-bit unsigned integer that represents an action to be taken on the responders
+//! part. This can be thought of as a command/directive/verb.
+//! - `argument` completely depends on the `verb`. Each `verb` will have its own argument type, and
+//! each argument can define its own structure. As such, arguments can be fixed or dynamic in size.
+//!
+//! A list of arguments can be found in the [`arguments`](arguments/index.html) sub-module.
+//!
+//! Verbs/directives are defined in the [`Directive`](enum.Directive.html) enum.
+//!
+//! ## Examples
+//!
 //! Conversion between the two could look like this:
 //! ```rust
 //! let mut msg: Message = Message {
@@ -195,9 +218,9 @@ impl MessageBuilder {
 
 #[derive(Debug)]
 pub struct Message {
-    id: u16,
-    verb: Directive,
-    argument: Option<Box<dyn Argument>>,
+    pub id: u16,
+    pub verb: Directive,
+    pub argument: Option<Box<dyn Argument>>,
 }
 
 #[cfg(test)]

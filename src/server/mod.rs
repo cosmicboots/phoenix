@@ -1,10 +1,10 @@
-#![allow(dead_code)]
-
 mod db;
 
 use base64ct::{Base64, Encoding};
 
 use db::Db;
+
+use crate::messaging::{arguments::FileMetadata, Directive};
 
 use super::{
     config::{Config, ServerConfig},
@@ -14,7 +14,7 @@ use super::{
 use std::{net::TcpListener, sync::Arc, thread};
 
 pub fn start_server(config_file: &str) {
-    let config = Arc::new(ServerConfig::read_config(config_file).unwrap());
+    let config = Arc::new(ServerConfig::read_config(config_file).expect("Bad config"));
 
     let db = Arc::new(Db::new(&config.storage_path).expect("Failed to open database"));
 
@@ -32,18 +32,33 @@ pub fn start_server(config_file: &str) {
             // Create new Server for use with noise layer
             let mut svc = Server::new(
                 stream.unwrap(),
-                &Base64::decode_vec(&config.privkey).unwrap(),
+                &Base64::decode_vec(&config.privkey).expect("Couldn't decode private key"),
                 &config
                     .clients
                     .iter()
                     .map(|x| Base64::decode_vec(x).unwrap())
-                    .collect::<Vec<Vec<u8>>>()[..],
-            ).unwrap();
+                    .collect::<Vec<Vec<u8>>>(),
+            )
+            .unwrap();
             info!("Connection established!");
             // Complete noise handshake
             info!("Server completed handshake");
-            while let Ok(msg) = &svc.recv() {
-                println!("{:?}", MessageBuilder::decode_message(msg));
+            while let Ok(raw_msg) = &svc.recv() {
+                let msg = MessageBuilder::decode_message(raw_msg).unwrap();
+                println!("{:?}", msg);
+                match msg.verb {
+                    Directive::SendFile => {
+                        db.add_file(
+                            msg.argument
+                                .unwrap()
+                                .as_any()
+                                .downcast_ref::<FileMetadata>()
+                                .unwrap(),
+                        )
+                        .expect("Failed to add file to database");
+                    }
+                    _ => {}
+                }
             }
             info!("Client disconnected");
         });

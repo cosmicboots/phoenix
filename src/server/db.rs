@@ -5,8 +5,9 @@
 use std::path::Path;
 
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
-use serde::{Deserialize, Serialize};
 use sled::{transaction::ConflictableTransactionResult, Transactional, Tree};
+
+use crate::messaging::arguments::FileMetadata;
 
 /// Static name of the file_table
 static FILE_TABLE: &str = "file_table";
@@ -15,23 +16,10 @@ static CHUNK_TABLE: &str = "chunk_table";
 /// Static name of the chunk_count table
 static CHUNK_COUNT: &str = "chunk_count";
 
-#[derive(Serialize, Deserialize, Debug, PartialEq)]
-/// Structure to store needed metadata for a file
-///
-/// This includes:
-/// - filename
-/// - A vector of chunk IDs (their hashes)
-/// - The overall hash of the file being represented
-pub struct File {
-    pub filename: String,
-    pub chunks: Vec<String>,
-    pub hash: String,
-}
-
 #[derive(Debug)]
 /// Structure for a single file chunk. Composed of the hash and the data.
 pub struct Chunk {
-    pub hash: String,
+    pub hash: [u8; 32],
     pub data: Vec<u8>,
 }
 
@@ -70,7 +58,7 @@ impl Db {
     /// This also increments the referenced values in the [`chunk_count`](#structfield.chunk_count)
     /// table; however, it doesn't actually insert any data into the
     /// [`chunk_table`](#structfield.chunk_table) table.
-    pub fn add_file(&self, file: &File) -> sled::Result<()> {
+    pub fn add_file(&self, file: &FileMetadata) -> sled::Result<()> {
         let value = match bincode::serialize(&file) {
             Ok(x) => x,
             Err(_) => panic!("Couldn't serialize file to store in database"),
@@ -80,13 +68,13 @@ impl Db {
             .transaction(
                 |(ft, cc)| -> ConflictableTransactionResult<(), sled::Error> {
                     // Add the file metadata to the file table
-                    ft.insert(file.hash.as_bytes(), &*value).unwrap();
+                    ft.insert(&file.file_id.hash, &*value).unwrap();
                     // Add all the chunks into the chunk count table
                     for chunk in &file.chunks {
                         let mut wtr = vec![];
                         cc.insert(
-                            chunk.as_bytes(),
-                            match cc.get(chunk).unwrap() {
+                            chunk.0.to_owned(),
+                            match cc.get(&chunk.0).unwrap() {
                                 Some(x) => {
                                     // Increment value already stored
                                     let mut rdr = std::io::Cursor::new(x);
@@ -113,11 +101,11 @@ impl Db {
     }
 
     /// Returns a [File](struct.File.html) from the database when given a file_hash.
-    pub fn get_file(&self, file_hash: &str) -> sled::Result<File> {
+    pub fn get_file(&self, file_hash: &str) -> sled::Result<FileMetadata> {
         match self.file_table.get(file_hash) {
             Ok(x) => match x {
                 Some(value) => {
-                    Ok(bincode::deserialize::<File>(&value).expect("Failed to deserialize"))
+                    Ok(bincode::deserialize::<FileMetadata>(&value).expect("Failed to deserialize"))
                 }
                 None => panic!("Not found in the database"),
             },
@@ -140,7 +128,7 @@ impl Db {
                     // sure orphaned chunks are never added into the database. This should prevent
                     // the need of expensive database clean up operations
                     if let Ok(Some(_)) = cc.get(&chunk.hash) {
-                        ct.insert(chunk.hash.as_str(), chunk.data.to_owned())?;
+                        ct.insert(chunk.hash.to_vec(), chunk.data.to_owned())?;
                     }
                     Ok(())
                 },
@@ -150,12 +138,12 @@ impl Db {
     }
 
     /// Gets a chunk out of the database given it's ID (hash).
-    pub fn get_chunk(&self, chunk_hash: &str) -> sled::Result<Chunk> {
+    pub fn get_chunk(&self, chunk_hash: [u8; 32]) -> sled::Result<Chunk> {
         // TODO: Improve error handling
         match self.chunk_table.get(&chunk_hash) {
             Ok(x) => match x {
                 Some(value) => Ok(Chunk {
-                    hash: chunk_hash.to_owned(),
+                    hash: chunk_hash,
                     data: value.to_vec(),
                 }),
                 None => panic!("Chunk not found"),
@@ -164,7 +152,7 @@ impl Db {
         }
     }
 
-    pub fn rm_file(&self, file_hash: &str) {
+    pub fn rm_file(&self, file_hash: &[u8]) {
         (&self.file_table, &self.chunk_table, &self.chunk_count)
             .transaction(
                 |(ft, ct, cc)| -> ConflictableTransactionResult<(), sled::Error> {
@@ -173,27 +161,27 @@ impl Db {
                     // 3.   if 0 refs, delete the chunk from the chunk table
                     if let Ok(Some(bin_file)) = ft.get(&file_hash) {
                         // Deserialize bin into the File struct
-                        if let Ok(file) = bincode::deserialize::<File>(&bin_file) {
+                        if let Ok(file) = bincode::deserialize::<FileMetadata>(&bin_file) {
                             for chunk in file.chunks {
-                                if let Ok(Some(x)) = cc.get(&chunk) {
+                                if let Ok(Some(x)) = cc.get(&chunk.0) {
                                     let mut rdr = std::io::Cursor::new(x);
                                     match rdr.read_u32::<LittleEndian>() {
                                         // If there are no more references to the given chunk,
                                         // remove it from the chunk table and the chunk count table
                                         Ok(0) | Ok(1) => {
-                                            ct.remove(&*chunk)?;
-                                            cc.remove(&*chunk)?;
+                                            ct.remove(&*chunk.0)?;
+                                            cc.remove(&*chunk.0)?;
                                         }
                                         Ok(x) => {
                                             let mut wtr = vec![];
                                             wtr.write_u32::<LittleEndian>(x - 1).unwrap();
-                                            cc.insert(chunk.as_bytes(), wtr)?;
+                                            cc.insert(chunk.0, wtr)?;
                                         }
                                         _ => {}
                                     }
                                 }
                             }
-                            ft.remove(file.hash.as_bytes()).unwrap();
+                            ft.remove(&file.file_id.hash).unwrap();
                         }
                     }
                     Ok(())
@@ -205,6 +193,7 @@ impl Db {
 
 #[cfg(test)]
 mod tests {
+    #![allow(unreachable_code, unused)]
     use std::{panic, path::PathBuf, str::FromStr};
 
     use super::*;
@@ -224,10 +213,13 @@ mod tests {
     fn test_file_db() {
         run_test(|| {
             let db = Db::new(&PathBuf::from_str("testingdb").unwrap()).unwrap();
-            let f = File {
-                filename: String::from("filename.txt"),
-                chunks: vec![String::from("chunk1")],
-                hash: String::from("ABCDEF1234567890"),
+            let f = FileMetadata {
+                file_id: todo!(),
+                file_name: todo!(),
+                permissions: todo!(),
+                modified: todo!(),
+                created: todo!(),
+                chunks: todo!(),
             };
             db.add_file(&f).unwrap();
             assert_eq!(f, db.get_file("ABCDEF1234567890").unwrap())
@@ -238,13 +230,16 @@ mod tests {
     fn test_file_rm() {
         run_test(|| {
             let db = Db::new(&PathBuf::from_str("testingdb").unwrap()).unwrap();
-            let f = File {
-                filename: String::from("filename.txt"),
-                chunks: vec![String::from("chunk1")],
-                hash: String::from("ABCDEF1234567890"),
+            let f = FileMetadata {
+                file_id: todo!(),
+                file_name: todo!(),
+                permissions: todo!(),
+                modified: todo!(),
+                created: todo!(),
+                chunks: todo!(),
             };
             db.add_file(&f).unwrap();
-            db.rm_file(&f.hash);
+            db.rm_file(&f.file_id.hash);
             assert_eq!(f, db.get_file("ABCDEF1234567890").unwrap())
         })
     }

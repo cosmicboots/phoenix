@@ -1,3 +1,5 @@
+//! This module provides the configuration file structure for both the client and the server.
+
 use serde::{Deserialize, Serialize};
 use std::{fs, path::{Path, PathBuf}};
 

@@ -1,8 +1,10 @@
 // Directive specific abstractions for parsing the byte array argument data
 use core::fmt::Debug;
+use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::{
-    fs::{File, Metadata, Permissions},
+    any::Any,
+    fs::{File, Metadata},
     io,
     os::unix::prelude::PermissionsExt,
     path::PathBuf,
@@ -17,6 +19,7 @@ pub trait Argument: Debug {
     fn from_bin(data: &[u8]) -> Result<Self, Error>
     where
         Self: Sized;
+    fn as_any(&self) -> &dyn Any;
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -30,12 +33,15 @@ impl Argument for Version {
     fn from_bin(ver: &[u8]) -> Result<Self, Error> {
         Ok(Version(ver[0]))
     }
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, PartialEq)]
 pub struct FileId {
-    path: PathBuf,
-    hash: [u8; 32],
+    pub path: PathBuf,
+    pub hash: [u8; 32],
 }
 
 impl FileId {
@@ -73,35 +79,45 @@ impl Argument for FileId {
 
         Ok(FileId { path, hash: xdata })
     }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
 }
 
-#[derive(Debug, PartialEq)]
-pub struct ChunkId(String);
+#[derive(Serialize, Deserialize, Debug, PartialEq)]
+pub struct ChunkId(pub Vec<u8>);
 
 impl Argument for ChunkId {
     fn to_bin(self: &Self) -> Vec<u8> {
-        self.0.as_bytes().to_vec()
+        self.0.to_owned()
     }
 
     fn from_bin(data: &[u8]) -> Result<Self, Error> {
-        match String::from_utf8(data.to_vec()) {
-            Ok(x) => Ok(Self(x)),
-            Err(e) => Err(Error("Failed to parse ChunkId".to_owned())),
-        }
+        Ok(Self(data.to_vec()))
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, PartialEq)]
 pub struct FileMetadata {
-    file_id: FileId,
-    file_name: String,
-    pub permissions: Permissions,
+    pub file_id: FileId,
+    pub file_name: String,
+    pub permissions: u32,
     pub modified: u128,
     pub created: u128,
+    pub chunks: Vec<ChunkId>,
 }
 
 impl FileMetadata {
-    pub fn new(file_id: FileId, metadata: Metadata) -> Result<Self, io::Error> {
+    pub fn new(
+        file_id: FileId,
+        metadata: Metadata,
+        chunks: &[[u8; 32]],
+    ) -> Result<Self, io::Error> {
         Ok(FileMetadata {
             file_name: file_id
                 .path
@@ -111,7 +127,7 @@ impl FileMetadata {
                 .unwrap()
                 .to_owned(),
             file_id,
-            permissions: metadata.permissions(),
+            permissions: metadata.permissions().mode(),
             modified: metadata
                 .modified()?
                 .duration_since(time::UNIX_EPOCH)
@@ -122,6 +138,10 @@ impl FileMetadata {
                 .duration_since(time::UNIX_EPOCH)
                 .unwrap()
                 .as_millis(),
+            chunks: chunks
+                .iter()
+                .map(|x| ChunkId(x.to_vec()))
+                .collect::<Vec<ChunkId>>(),
         })
     }
 }
@@ -134,10 +154,13 @@ impl Argument for FileMetadata {
         buf.extend_from_slice(&(path.len() as u64).to_be_bytes());
         buf.extend_from_slice(path);
 
-        buf.extend_from_slice(&self.permissions.mode().to_be_bytes());
+        buf.extend_from_slice(&self.permissions.to_be_bytes());
         buf.extend_from_slice(&self.modified.to_be_bytes());
         buf.extend_from_slice(&self.created.to_be_bytes());
         buf.extend_from_slice(&self.file_id.hash);
+        for chunk in &self.chunks {
+            buf.extend_from_slice(&chunk.0);
+        }
         buf
     }
 
@@ -149,7 +172,7 @@ impl Argument for FileMetadata {
 
         let mut buf = [0u8; 4];
         buf.copy_from_slice(&data[end..end + 4]);
-        let permissions: Permissions = PermissionsExt::from_mode(u32::from_be_bytes(buf));
+        let permissions = u32::from_be_bytes(buf);
 
         let end = end + 4;
         let mut buf = [0u8; 16];
@@ -162,13 +185,28 @@ impl Argument for FileMetadata {
         let mut hash = [0u8; 32];
         hash.copy_from_slice(&data[end..end + 32]);
 
+        let end = end + 32;
+        let mut chunks: Vec<ChunkId> = vec![];
+        for cur in (end..data.len()).step_by(32) {
+            if cur + 32 <= data.len() {
+                chunks.push(ChunkId(data[cur..cur + 32].to_vec()));
+            } else {
+                chunks.push(ChunkId(data[cur..].to_vec()));
+            }
+        }
+
         Ok(FileMetadata {
             file_name: path.file_name().unwrap().to_str().unwrap().to_owned(),
             file_id: FileId { path, hash },
             permissions,
             modified,
             created,
+            chunks,
         })
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
     }
 }
 
@@ -182,6 +220,10 @@ impl Argument for Chunk {
 
     fn from_bin(data: &[u8]) -> Result<Self, Error> {
         Ok(Chunk(data.to_vec()))
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
     }
 }
 
@@ -197,6 +239,10 @@ impl Argument for ResponseCode {
         let mut buf = [0u8; 2];
         buf.copy_from_slice(data);
         Ok(ResponseCode(u16::from_be_bytes(buf)))
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
     }
 }
 
@@ -240,12 +286,12 @@ mod tests {
     #[test]
     fn test_argument_chunkid() {
         assert_eq!(
-            ChunkId("Hello world".to_owned()).to_bin(),
+            ChunkId(b"Hello world".to_vec()).to_bin(),
             vec![72, 101, 108, 108, 111, 32, 119, 111, 114, 108, 100]
         );
         assert_eq!(
             ChunkId::from_bin(&[72, 101, 108, 108, 111, 32, 119, 111, 114, 108, 100]).unwrap(),
-            ChunkId("Hello world".to_owned())
+            ChunkId(b"Hello world".to_vec())
         );
     }
 }

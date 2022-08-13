@@ -1,6 +1,5 @@
 //! Phoenix main entry point
 mod client;
-mod common;
 mod config;
 mod messaging;
 mod net;
@@ -109,7 +108,7 @@ where
     }
 }
 
-/// Fine the config file location
+/// Find the config file location
 ///
 /// In order of preference
 /// 1. File specified with `--config` cli argument
