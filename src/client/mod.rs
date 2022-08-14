@@ -24,7 +24,7 @@ pub fn start_client(config_file: &str, path: &str) {
     )
     .unwrap();
     let builder = messaging::MessageBuilder::new(1);
-    let client = Client::new(builder, net_client);
+    let mut client = Client::new(builder, net_client);
 
     let watch_path = PathBuf::from(path);
 
@@ -48,9 +48,7 @@ pub fn start_client(config_file: &str, path: &str) {
                 | DebouncedEvent::Create(p)
                 | DebouncedEvent::Write(p)
                 | DebouncedEvent::Chmod(p) => {
-                    let file_info = get_file_info(&p).unwrap();
-                    debug!("{:?}", file_info);
-                    match client.send_file_info(file_info) {
+                    match client.send_file_info(&p) {
                         Ok(_) => info!("Successfully sent the file"),
                         Err(e) => error!("{:?}", e),
                     };

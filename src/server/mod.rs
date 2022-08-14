@@ -9,7 +9,7 @@ use crate::messaging::{arguments::FileMetadata, Directive};
 use super::{
     config::{Config, ServerConfig},
     messaging::MessageBuilder,
-    net::{NoiseConnection, Server},
+    net::{NoiseConnection, NetServer},
 };
 use std::{net::TcpListener, sync::Arc, thread};
 
@@ -30,7 +30,7 @@ pub fn start_server(config_file: &str) {
         let db = db.clone();
         thread::spawn(move || {
             // Create new Server for use with noise layer
-            let mut svc = Server::new(
+            let mut svc = NetServer::new(
                 stream.unwrap(),
                 &Base64::decode_vec(&config.privkey).expect("Couldn't decode private key"),
                 &config

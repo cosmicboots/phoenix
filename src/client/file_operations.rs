@@ -1,4 +1,5 @@
 use std::{
+    error::Error,
     fs::{self, File},
     io::{self, Read, Seek, SeekFrom},
     path::Path,
@@ -31,8 +32,12 @@ impl Client {
         }
     }
 
-    pub fn send_file_info(&mut self, file: FileMetadata) -> Result<(), snow::Error> {
-        let msg = self.builder.encode_message(Directive::SendFile, Some(file));
+    /// Send file metadata to the server
+    pub fn send_file_info(&mut self, path: &Path) -> Result<(), Box<dyn Error>> {
+        let file_info = get_file_info(path)?;
+        let msg = self
+            .builder
+            .encode_message(Directive::SendFile, Some(file_info));
         self.net_client.send(&msg)?;
         Ok(())
     }
