@@ -67,10 +67,8 @@ fn main() {
         Command::Run { server, file_path } => {
             if server {
                 server::start_server(&config_file);
-            } else {
-                if let Some(arg) = file_path {
-                    start_client(&config_file, &arg);
-                }
+            } else if let Some(arg) = file_path {
+                start_client(&config_file, &arg);
             }
         }
         Command::GenKey => {

@@ -6,7 +6,7 @@ use std::{fs, net::TcpStream, path::PathBuf, sync::mpsc, time::Duration};
 
 mod file_operations;
 
-use file_operations::{get_file_info, Client};
+use file_operations::Client;
 
 use crate::{
     config::{ClientConfig, Config},

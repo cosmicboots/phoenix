@@ -15,7 +15,7 @@ use std::{
 pub struct Error(String);
 
 pub trait Argument: Debug {
-    fn to_bin(self: &Self) -> Vec<u8>;
+    fn to_bin(&self) -> Vec<u8>;
     fn from_bin(data: &[u8]) -> Result<Self, Error>
     where
         Self: Sized;
@@ -26,7 +26,7 @@ pub trait Argument: Debug {
 pub struct Version(pub u8);
 
 impl Argument for Version {
-    fn to_bin(self: &Self) -> Vec<u8> {
+    fn to_bin(&self) -> Vec<u8> {
         self.0.to_be_bytes().to_vec()
     }
 
@@ -58,7 +58,7 @@ impl FileId {
 }
 
 impl Argument for FileId {
-    fn to_bin(self: &Self) -> Vec<u8> {
+    fn to_bin(&self) -> Vec<u8> {
         let mut x = self.path.to_str().unwrap().as_bytes().to_vec();
         x.extend_from_slice(&self.hash);
         x
@@ -89,7 +89,7 @@ impl Argument for FileId {
 pub struct ChunkId(pub Vec<u8>);
 
 impl Argument for ChunkId {
-    fn to_bin(self: &Self) -> Vec<u8> {
+    fn to_bin(&self) -> Vec<u8> {
         self.0.to_owned()
     }
 
@@ -147,7 +147,7 @@ impl FileMetadata {
 }
 
 impl Argument for FileMetadata {
-    fn to_bin(self: &Self) -> Vec<u8> {
+    fn to_bin(&self) -> Vec<u8> {
         let mut buf: Vec<u8> = vec![];
 
         let path = self.file_id.path.to_str().unwrap().as_bytes();
@@ -214,7 +214,7 @@ impl Argument for FileMetadata {
 pub struct Chunk(Vec<u8>);
 
 impl Argument for Chunk {
-    fn to_bin(self: &Self) -> Vec<u8> {
+    fn to_bin(&self) -> Vec<u8> {
         Vec::clone(&self.0)
     }
 
@@ -231,7 +231,7 @@ impl Argument for Chunk {
 pub struct ResponseCode(u16);
 
 impl Argument for ResponseCode {
-    fn to_bin(self: &Self) -> Vec<u8> {
+    fn to_bin(&self) -> Vec<u8> {
         self.0.to_be_bytes().to_vec()
     }
 

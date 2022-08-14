@@ -163,10 +163,10 @@ pub struct MessageBuilder {
 
 impl MessageBuilder {
     pub fn new(ver: u8) -> MessageBuilder {
-        return MessageBuilder {
+        MessageBuilder {
             protocol_version: Version(ver),
             current_request: 0,
-        };
+        }
     }
 
     /// Encode a message from language constructs to a binary packet format
@@ -175,10 +175,7 @@ impl MessageBuilder {
         T: Argument,
     {
         // Encode message arguments
-        let encoded_data = match argument {
-            Some(x) => Some(x.to_bin()),
-            None => None,
-        };
+        let encoded_data = argument.map(|x| x.to_bin());
 
         let msg = RawMessage {
             id: self.current_request,

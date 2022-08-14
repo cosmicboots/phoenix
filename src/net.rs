@@ -57,7 +57,7 @@ use std::{
 use base64ct::{Base64, Encoding};
 use snow::{Builder, Keypair, TransportState};
 
-static NOISE_PATTERN: &'static str = "Noise_IK_25519_ChaChaPoly_BLAKE2s";
+static NOISE_PATTERN: &str = "Noise_IK_25519_ChaChaPoly_BLAKE2s";
 
 pub trait NoiseConnection {
     fn new(

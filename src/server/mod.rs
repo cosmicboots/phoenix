@@ -57,7 +57,8 @@ pub fn start_server(config_file: &str) {
                         )
                         .expect("Failed to add file to database");
                     }
-                    _ => {}
+                    Directive::SendChunk => todo!(),
+                    _ => todo!(),
                 }
             }
             info!("Client disconnected");
