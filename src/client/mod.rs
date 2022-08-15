@@ -1,5 +1,3 @@
-#![allow(dead_code)]
-
 use base64ct::{Base64, Encoding};
 use notify::{watcher, DebouncedEvent, Watcher};
 use std::{fs, net::TcpStream, path::PathBuf, sync::mpsc, time::Duration};

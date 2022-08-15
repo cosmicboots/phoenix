@@ -1,7 +1,7 @@
 //! This module provides the configuration file structure for both the client and the server.
 
 use serde::{Deserialize, Serialize};
-use std::{fs, path::{Path, PathBuf}};
+use std::{fs, path::{Path, PathBuf}, env};
 
 pub trait Config: Serialize {
     fn read_config(filename: &str) -> Result<Self, toml::de::Error>
@@ -37,7 +37,7 @@ impl Config for ServerConfig {
             let config = ServerConfig {
                 bind_address: "127.0.0.1:8080".to_string(),
                 privkey: String::new(),
-                storage_path: PathBuf::new(),
+                storage_path: get_server_storage_path(),
                 clients: vec![],
             };
             Ok(config)
@@ -53,6 +53,18 @@ impl Config for ServerConfig {
     fn dump_config(&self) -> Result<String, toml::ser::Error> {
         toml::to_string(&self)
     }
+}
+
+fn get_server_storage_path() -> PathBuf {
+    let mut base_path = PathBuf::new();
+    if let Ok(var) = env::var("XDG_DATA_HOME") {
+        base_path = PathBuf::from(var);
+    }
+    let r#default = PathBuf::from("~/.local/share");
+    if r#default.is_dir() {
+        base_path = r#default;
+    }
+    base_path.join("phoenix")
 }
 
 #[derive(Debug, Deserialize, Serialize)]
