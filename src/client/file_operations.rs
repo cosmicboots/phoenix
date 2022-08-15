@@ -70,7 +70,10 @@ impl Client {
             hasher.update(&buf[..len]);
             let hash: Vec<u8> = hasher.finalize_reset().to_vec();
             if id.to_bin() == hash {
-                let chunk = arguments::Chunk((arguments::ChunkId(hash), buf[..len].to_vec()));
+                let chunk = arguments::Chunk {
+                    id: arguments::ChunkId(hash),
+                    data: buf[..len].to_vec(),
+                };
                 let msg = self
                     .builder
                     .encode_message(Directive::SendChunk, Some(chunk));

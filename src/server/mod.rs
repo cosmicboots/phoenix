@@ -4,14 +4,17 @@ use base64ct::{Base64, Encoding};
 
 use db::Db;
 
-use crate::messaging::{arguments::FileMetadata, Directive};
+use crate::messaging::{
+    arguments::{Chunk, FileMetadata},
+    Directive,
+};
 
 use super::{
     config::{Config, ServerConfig},
     messaging::MessageBuilder,
-    net::{NoiseConnection, NetServer},
+    net::{NetServer, NoiseConnection},
 };
-use std::{net::TcpListener, sync::Arc, thread, path::Path};
+use std::{net::TcpListener, path::Path, sync::Arc, thread};
 
 pub fn start_server(config_file: &Path) {
     let config = Arc::new(ServerConfig::read_config(config_file).expect("Bad config"));
@@ -57,7 +60,16 @@ pub fn start_server(config_file: &Path) {
                         )
                         .expect("Failed to add file to database");
                     }
-                    Directive::SendChunk => todo!(),
+                    Directive::SendChunk => {
+                        db.add_chunk(
+                            msg.argument
+                                .unwrap()
+                                .as_any()
+                                .downcast_ref::<Chunk>()
+                                .unwrap(),
+                        )
+                        .expect("Failed to add chunk to database");
+                    }
                     _ => todo!(),
                 }
             }

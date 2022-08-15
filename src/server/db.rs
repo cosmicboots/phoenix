@@ -7,7 +7,7 @@ use std::path::Path;
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use sled::{transaction::ConflictableTransactionResult, Transactional, Tree};
 
-use crate::messaging::arguments::FileMetadata;
+use crate::messaging::arguments::{FileMetadata, Chunk, ChunkId};
 
 /// Static name of the file_table
 static FILE_TABLE: &str = "file_table";
@@ -15,13 +15,6 @@ static FILE_TABLE: &str = "file_table";
 static CHUNK_TABLE: &str = "chunk_table";
 /// Static name of the chunk_count table
 static CHUNK_COUNT: &str = "chunk_count";
-
-#[derive(Debug)]
-/// Structure for a single file chunk. Composed of the hash and the data.
-pub struct Chunk {
-    pub hash: [u8; 32],
-    pub data: Vec<u8>,
-}
 
 #[derive(Debug)]
 /// The main database stucture to store back-end data.
@@ -127,8 +120,8 @@ impl Db {
                     // Check to see if the chunk is referenced (via the chunk_count table) to make
                     // sure orphaned chunks are never added into the database. This should prevent
                     // the need of expensive database clean up operations
-                    if let Ok(Some(_)) = cc.get(&chunk.hash) {
-                        ct.insert(chunk.hash.to_vec(), chunk.data.to_owned())?;
+                    if let Ok(Some(_)) = cc.get(&chunk.id.0) {
+                        ct.insert(chunk.id.0.to_vec(), chunk.data.to_owned())?;
                     }
                     Ok(())
                 },
@@ -143,7 +136,7 @@ impl Db {
         match self.chunk_table.get(&chunk_hash) {
             Ok(x) => match x {
                 Some(value) => Ok(Chunk {
-                    hash: chunk_hash,
+                    id: ChunkId(chunk_hash.to_vec()),
                     data: value.to_vec(),
                 }),
                 None => panic!("Chunk not found"),

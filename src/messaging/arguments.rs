@@ -211,19 +211,25 @@ impl Argument for FileMetadata {
 }
 
 #[derive(Debug, PartialEq)]
-pub struct Chunk(pub (ChunkId, Vec<u8>));
+pub struct Chunk {
+    pub id: ChunkId,
+    pub data: Vec<u8>,
+}
 
 impl Argument for Chunk {
     fn to_bin(&self) -> Vec<u8> {
-        let mut buf: Vec<u8> = self.0.0.to_bin();
-        buf.extend_from_slice(&self.0.1);
+        let mut buf: Vec<u8> = self.id.to_bin();
+        buf.extend_from_slice(&self.data);
         buf
     }
 
     fn from_bin(data: &[u8]) -> Result<Self, Error> {
         let chunk_id = ChunkId::from_bin(&data[..32]).unwrap();
         let chunk_data = data[32..].to_vec();
-        Ok(Chunk((chunk_id, chunk_data)))
+        Ok(Chunk {
+            id: chunk_id,
+            data: chunk_data,
+        })
     }
 
     fn as_any(&self) -> &dyn Any {
