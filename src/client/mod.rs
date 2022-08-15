@@ -1,6 +1,6 @@
 use base64ct::{Base64, Encoding};
 use notify::{watcher, DebouncedEvent, Watcher};
-use std::{fs, net::TcpStream, path::PathBuf, sync::mpsc, time::Duration};
+use std::{fs, net::TcpStream, path::{PathBuf, Path}, sync::mpsc, time::Duration};
 
 mod file_operations;
 
@@ -12,7 +12,7 @@ use crate::{
     net::{NetClient, NoiseConnection},
 };
 
-pub fn start_client(config_file: &str, path: &str) {
+pub fn start_client(config_file: &Path, path: &Path) {
     let config = ClientConfig::read_config(config_file).unwrap();
 
     let net_client = NetClient::new(

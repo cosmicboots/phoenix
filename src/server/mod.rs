@@ -11,9 +11,9 @@ use super::{
     messaging::MessageBuilder,
     net::{NoiseConnection, NetServer},
 };
-use std::{net::TcpListener, sync::Arc, thread};
+use std::{net::TcpListener, sync::Arc, thread, path::Path};
 
-pub fn start_server(config_file: &str) {
+pub fn start_server(config_file: &Path) {
     let config = Arc::new(ServerConfig::read_config(config_file).expect("Bad config"));
 
     let db = Arc::new(Db::new(&config.storage_path).expect("Failed to open database"));

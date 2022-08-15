@@ -7,7 +7,7 @@ use std::{
 };
 
 pub trait Config: Serialize {
-    fn read_config(filename: &str) -> Result<Self, toml::de::Error>
+    fn read_config(path: &Path) -> Result<Self, toml::de::Error>
     where
         Self: Sized;
 
@@ -31,9 +31,9 @@ pub struct ServerConfig {
 }
 
 impl Config for ServerConfig {
-    fn read_config(filename: &str) -> Result<ServerConfig, toml::de::Error> {
-        if Path::new(filename).exists() {
-            let raw = fs::read_to_string(filename).expect("Failed to read file");
+    fn read_config(path: &Path) -> Result<ServerConfig, toml::de::Error> {
+        if path.exists() {
+            let raw = fs::read_to_string(path).expect("Failed to read file");
             let toml: ServerConfig = toml::from_str(&raw)?;
             Ok(toml)
         } else {
@@ -83,9 +83,9 @@ pub struct ClientConfig {
 }
 
 impl Config for ClientConfig {
-    fn read_config(filename: &str) -> Result<Self, toml::de::Error> {
-        if Path::new(filename).exists() {
-            let raw = fs::read_to_string(filename).expect("Failed to read file");
+    fn read_config(path: &Path) -> Result<Self, toml::de::Error> {
+        if path.exists() {
+            let raw = fs::read_to_string(path).expect("Failed to read file");
             let toml: ClientConfig = toml::from_str(&raw)?;
             Ok(toml)
         } else {

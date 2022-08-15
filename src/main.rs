@@ -8,6 +8,8 @@ mod server;
 #[macro_use]
 extern crate log;
 
+use std::{path::PathBuf, env};
+
 use base64ct::{Base64, Encoding};
 use clap::{ArgGroup, Parser, Subcommand};
 use client::start_client;
@@ -19,7 +21,7 @@ use log::LevelFilter;
 struct Cli {
     /// Specify custom config file
     #[clap(long, short, value_parser)]
-    config: Option<String>,
+    config: Option<PathBuf>,
     #[clap(subcommand)]
     command: Command,
 }
@@ -36,7 +38,7 @@ enum Command {
         #[clap(long, action)]
         server: bool,
         #[clap(value_parser)]
-        file_path: Option<String>,
+        file_path: Option<PathBuf>,
     },
     /// Dump the current config.
     ///
@@ -113,9 +115,25 @@ where
 /// 2. XDG_CONFIG_HOME/phoenix/config.toml
 /// 3. ~/.config/phoenix/config.toml
 /// 4. ./config.toml
-fn find_config(config: Option<String>) -> String {
+fn find_config(config: Option<PathBuf>) -> PathBuf {
+    // File spcified with --config flag
     if let Some(cfg) = config {
         return cfg;
     }
-    String::from("config.toml")
+
+    // Fall back paths
+    let mut base_path = PathBuf::from("config.toml");
+    if let Ok(path_str) = env::var("XDG_CONFIG_HOME") {
+        let path = PathBuf::from(path_str).join("phoenix");
+        if path.is_dir() {
+            base_path = path.join("config.toml");
+        }
+    } else if let Ok(home) = env::var("HOME") {
+        let path = PathBuf::from(home).join(".config/phoenix");
+        if path.is_dir() {
+            base_path = path.join("config.toml");
+        }
+    }
+    info!("Using {:?} as config path", base_path);
+    base_path
 }
