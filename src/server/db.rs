@@ -46,6 +46,15 @@ impl Db {
         })
     }
 
+    pub fn new_temporary() -> sled::Result<Db> {
+        let db = sled::Config::new().temporary(true).open()?;
+        Ok(Db {
+            file_table: db.open_tree(FILE_TABLE)?,
+            chunk_table: db.open_tree(CHUNK_TABLE)?,
+            chunk_count: db.open_tree(CHUNK_COUNT)?,
+        })
+    }
+
     /// Adds a [File](struct.File.html) struct into the file_table database.
     ///
     /// This also increments the referenced values in the [`chunk_count`](#structfield.chunk_count)
@@ -187,7 +196,7 @@ impl Db {
 #[cfg(test)]
 mod tests {
     #![allow(unreachable_code, unused)]
-    use std::{panic, path::PathBuf, str::FromStr};
+    use std::{panic, path::PathBuf, str::FromStr, sync::{Arc, Mutex}};
 
     use super::*;
 
@@ -196,16 +205,17 @@ mod tests {
 
     fn run_test<T>(test: T) -> ()
     where
-        T: FnOnce() -> () + panic::UnwindSafe,
+        T: FnOnce(Arc<Mutex<Db>>) -> () + panic::UnwindSafe,
     {
-        let result = panic::catch_unwind(|| test());
+        let db = Arc::new(Mutex::new(Db::new_temporary().unwrap()));
+        let result = panic::catch_unwind(|| test(db));
         assert!(result.is_ok())
     }
 
-    //#[test]
+    #[test]
     fn test_file_db() {
-        run_test(|| {
-            let db = Db::new(&PathBuf::from_str("testingdb").unwrap()).unwrap();
+        run_test(|db| {
+            let db = db.lock().unwrap();
             let f = FileMetadata {
                 file_id: todo!(),
                 file_name: todo!(),
@@ -219,10 +229,10 @@ mod tests {
         })
     }
 
-    //#[test]
+    #[test]
     fn test_file_rm() {
-        run_test(|| {
-            let db = Db::new(&PathBuf::from_str("testingdb").unwrap()).unwrap();
+        run_test(|db| {
+            let db = db.lock().unwrap();
             let f = FileMetadata {
                 file_id: todo!(),
                 file_name: todo!(),
