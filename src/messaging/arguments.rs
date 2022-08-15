@@ -85,7 +85,7 @@ impl Argument for FileId {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
 pub struct ChunkId(pub Vec<u8>);
 
 impl Argument for ChunkId {
@@ -211,15 +211,19 @@ impl Argument for FileMetadata {
 }
 
 #[derive(Debug, PartialEq)]
-pub struct Chunk(Vec<u8>);
+pub struct Chunk(pub (ChunkId, Vec<u8>));
 
 impl Argument for Chunk {
     fn to_bin(&self) -> Vec<u8> {
-        Vec::clone(&self.0)
+        let mut buf: Vec<u8> = self.0.0.to_bin();
+        buf.extend_from_slice(&self.0.1);
+        buf
     }
 
     fn from_bin(data: &[u8]) -> Result<Self, Error> {
-        Ok(Chunk(data.to_vec()))
+        let chunk_id = ChunkId::from_bin(&data[..32]).unwrap();
+        let chunk_data = data[32..].to_vec();
+        Ok(Chunk((chunk_id, chunk_data)))
     }
 
     fn as_any(&self) -> &dyn Any {

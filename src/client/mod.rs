@@ -1,6 +1,12 @@
 use base64ct::{Base64, Encoding};
 use notify::{watcher, DebouncedEvent, Watcher};
-use std::{fs, net::TcpStream, path::{PathBuf, Path}, sync::mpsc, time::Duration};
+use std::{
+    fs,
+    net::TcpStream,
+    path::{Path, PathBuf},
+    sync::mpsc,
+    time::Duration,
+};
 
 mod file_operations;
 
@@ -47,7 +53,10 @@ pub fn start_client(config_file: &Path, path: &Path) {
                 | DebouncedEvent::Write(p)
                 | DebouncedEvent::Chmod(p) => {
                     match client.send_file_info(&p) {
-                        Ok(_) => info!("Successfully sent the file"),
+                        Ok(chunks) => {
+                            info!("Successfully sent the file");
+                            client.send_chunks(&p, chunks).unwrap();
+                        }
                         Err(e) => error!("{:?}", e),
                     };
                 }

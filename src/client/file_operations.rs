@@ -3,17 +3,22 @@ use std::{
     fs::{self, File},
     io::{self, Read, Seek, SeekFrom},
     path::Path,
+    sync::mpsc::{self, Receiver, Sender},
+    thread,
 };
 
 use sha2::{Digest, Sha256};
 
 use crate::{
     messaging::{
-        arguments::{FileId, FileMetadata},
+        arguments::{self, Argument, ChunkId, FileId, FileMetadata},
         Directive, MessageBuilder,
     },
     net::{NetClient, NoiseConnection},
 };
+
+const CHUNK_SIZE: usize = 8; // 8 byte chunk size. TODO: automatically determine this. Probably
+                             // using file size ranges
 
 /// This struct is the main entry point for any operations that come from the client.
 ///
@@ -21,33 +26,65 @@ use crate::{
 /// high level.
 pub struct Client {
     builder: MessageBuilder,
-    net_client: NetClient,
+    msg_queue: Sender<Vec<u8>>,
 }
 
 impl Client {
-    pub fn new(builder: MessageBuilder, net_client: NetClient) -> Self {
+    pub fn new(builder: MessageBuilder, mut net_client: NetClient) -> Self {
+        let (tx, rx): (Sender<Vec<u8>>, Receiver<Vec<u8>>) = mpsc::channel();
+        thread::spawn(move || {
+            while let Ok(data) = rx.recv() {
+                if let Err(e) = net_client.send(&data) {
+                    // TODO: handle errors. Possibly requeue them
+                    error!("{:?}", e);
+                };
+            }
+        });
+
         Client {
             builder,
-            net_client,
+            msg_queue: tx,
         }
     }
 
     /// Send file metadata to the server
-    pub fn send_file_info(&mut self, path: &Path) -> Result<(), Box<dyn Error>> {
+    pub fn send_file_info(&mut self, path: &Path) -> Result<Vec<ChunkId>, Box<dyn Error>> {
         let file_info = get_file_info(path)?;
+        let chunks = file_info.chunks.clone();
         let msg = self
             .builder
             .encode_message(Directive::SendFile, Some(file_info));
-        self.net_client.send(&msg)?;
+        self.msg_queue.send(msg)?;
+        Ok(chunks)
+    }
+
+    pub fn send_chunks(&mut self, path: &Path, chunks: Vec<ChunkId>) -> Result<(), Box<dyn Error>> {
+        let mut file = File::open(path)?;
+        let mut hasher = Sha256::new();
+
+        file.seek(SeekFrom::Start(0))?;
+
+        for id in chunks.iter() {
+            let mut buf = vec![0; CHUNK_SIZE];
+            let len = file.read(&mut buf)?;
+            hasher.update(&buf[..len]);
+            let hash: Vec<u8> = hasher.finalize_reset().to_vec();
+            if id.to_bin() == hash {
+                let chunk = arguments::Chunk((arguments::ChunkId(hash), buf[..len].to_vec()));
+                let msg = self
+                    .builder
+                    .encode_message(Directive::SendChunk, Some(chunk));
+                self.msg_queue.send(msg)?;
+            } else {
+                panic!("Chunks don't match up. File must have changed. This error will be handled in the future")
+            }
+        }
         Ok(())
     }
 }
 
 /// Calculate chunk boundries and file hash
 fn chunk_file(path: &Path) -> Result<Vec<[u8; 32]>, io::Error> {
-    const CHUNK_SIZE: usize = 8; // 8 byte chunk size. TODO: automatically determine this. Probably
-                                 // using file size ranges
-
     let mut file = File::open(path)?;
     let size = file.metadata().unwrap().len();
 
