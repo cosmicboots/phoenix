@@ -14,7 +14,6 @@ use base64ct::{Base64, Encoding};
 use clap::{ArgGroup, Parser, Subcommand};
 use client::start_client;
 use config::{ClientConfig, Config, ServerConfig};
-use log::LevelFilter;
 
 #[derive(Parser)]
 #[clap(author, version, about)]
@@ -53,13 +52,15 @@ enum Command {
         #[clap(requires = "write")]
         file_path: Option<String>,
     },
+    /// Dump the server database
+    DumpDb,
     /// Generate Noise keypairs
     GenKey,
 }
 
 fn main() {
     env_logger::Builder::from_default_env()
-        .filter_level(LevelFilter::Debug)
+        //.filter_level(LevelFilter::Debug)
         .init();
     let cli = Cli::parse();
 
@@ -72,6 +73,9 @@ fn main() {
             } else if let Some(arg) = file_path {
                 start_client(&config_file, &arg);
             }
+        }
+        Command::DumpDb => {
+            server::dump_data(&config_file);
         }
         Command::GenKey => {
             let keypair = net::generate_noise_keypair();

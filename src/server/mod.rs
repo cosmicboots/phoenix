@@ -18,7 +18,6 @@ use std::{net::TcpListener, path::Path, sync::Arc, thread};
 
 pub fn start_server(config_file: &Path) {
     let config = Arc::new(ServerConfig::read_config(config_file).expect("Bad config"));
-
     let db = Arc::new(Db::new(&config.storage_path).expect("Failed to open database"));
 
     // Construct TcpListener
@@ -76,4 +75,10 @@ pub fn start_server(config_file: &Path) {
             info!("Client disconnected");
         });
     }
+}
+
+pub fn dump_data(config_file: &Path) {
+    let config = Arc::new(ServerConfig::read_config(config_file).expect("Bad config"));
+    let db = Db::new(&config.storage_path).expect("Failed to open database");
+    db.dump_tree();
 }

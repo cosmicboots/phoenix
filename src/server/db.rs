@@ -4,10 +4,11 @@
 
 use std::path::Path;
 
+use base64ct::{Base64, Encoding};
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use sled::{transaction::ConflictableTransactionResult, Transactional, Tree};
 
-use crate::messaging::arguments::{FileMetadata, Chunk, ChunkId};
+use crate::messaging::arguments::{Chunk, ChunkId, FileMetadata};
 
 /// Static name of the file_table
 static FILE_TABLE: &str = "file_table";
@@ -106,9 +107,9 @@ impl Db {
     pub fn get_file(&self, file_hash: &str) -> sled::Result<FileMetadata> {
         match self.file_table.get(file_hash) {
             Ok(x) => match x {
-                Some(value) => {
-                    Ok(bincode::deserialize::<FileMetadata>(&value).expect("Failed to deserialize"))
-                }
+                Some(value) => Ok(
+                    bincode::deserialize::<FileMetadata>(&value).expect("Failed to deserialize")
+                ),
                 None => panic!("Not found in the database"),
             },
             Err(e) => Err(e),
@@ -191,12 +192,52 @@ impl Db {
             )
             .unwrap();
     }
+
+    pub fn dump_tree(&self) {
+        let mut table = self.file_table.iter();
+        println!("\n=== Printing file_table ===");
+        while let Some(Ok((key, value))) = table.next() {
+            println!(
+                "Key: {:?}\nValue: {:?}",
+                Base64::encode_string(&key),
+                bincode::deserialize::<FileMetadata>(&value).unwrap()
+            );
+        }
+        let mut table = self.chunk_table.iter();
+        println!("\n=== Printing chunk_table ===");
+        while let Some(Ok((key, value))) = table.next() {
+            println!(
+                "Chunk ID: {:?}\nData: {:?}",
+                Base64::encode_string(&key),
+                value
+            );
+        }
+        let mut table = self.chunk_count.iter();
+        println!("\n=== Printing chunk_count ===");
+        while let Some(Ok((key, value))) = table.next() {
+            let mut buf = [0u8; 4];
+            buf.copy_from_slice(&value);
+            println!(
+                "Chunk ID: {:?}\nChunk count: {:?}",
+                Base64::encode_string(&key),
+                u32::from_le_bytes(buf),
+            );
+        }
+    }
 }
 
 #[cfg(test)]
 mod tests {
     #![allow(unreachable_code, unused)]
-    use std::{panic, path::PathBuf, str::FromStr, sync::{Arc, Mutex}};
+    use std::{
+        panic,
+        path::PathBuf,
+        str::FromStr,
+        sync::{Arc, Mutex},
+        time,
+    };
+
+    use crate::messaging::arguments::FileId;
 
     use super::*;
 
@@ -208,8 +249,32 @@ mod tests {
         T: FnOnce(Arc<Mutex<Db>>) -> () + panic::UnwindSafe,
     {
         let db = Arc::new(Mutex::new(Db::new_temporary().unwrap()));
+        create_test_data(db.clone());
         let result = panic::catch_unwind(|| test(db));
         assert!(result.is_ok())
+    }
+
+    fn create_test_data(db: Arc<Mutex<Db>>) {
+        let db = db.lock().unwrap();
+        // Empty file
+        let file = FileMetadata {
+            file_id: FileId {
+                path: PathBuf::from("TestFile"),
+                hash: [0u8; 32],
+            },
+            file_name: "TestFile".to_owned(),
+            permissions: 0b110110000,
+            modified: time::SystemTime::now()
+                .duration_since(time::UNIX_EPOCH)
+                .unwrap()
+                .as_millis(),
+            created: time::SystemTime::now()
+                .duration_since(time::UNIX_EPOCH)
+                .unwrap()
+                .as_millis(),
+            chunks: vec![],
+        };
+        db.add_file(&file);
     }
 
     #[test]
