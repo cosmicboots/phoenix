@@ -198,7 +198,7 @@ impl Db {
         println!("\n=== Printing file_table ===");
         while let Some(Ok((key, value))) = table.next() {
             println!(
-                "Key: {:?}\nValue: {:?}",
+                "Key: {:?}\nValue:\n{}",
                 Base64::encode_string(&key),
                 bincode::deserialize::<FileMetadata>(&value).unwrap()
             );
@@ -206,10 +206,14 @@ impl Db {
         let mut table = self.chunk_table.iter();
         println!("\n=== Printing chunk_table ===");
         while let Some(Ok((key, value))) = table.next() {
+            let mut chunk_data = String::new();
+            for byte in value.iter() {
+                chunk_data.push_str(&format!("{:02x} ", byte));
+            }
             println!(
-                "Chunk ID: {:?}\nData: {:?}",
+                "Chunk ID: {}\nData: {}",
                 Base64::encode_string(&key),
-                value
+                chunk_data
             );
         }
         let mut table = self.chunk_count.iter();

@@ -1,9 +1,11 @@
 // Directive specific abstractions for parsing the byte array argument data
+use base64ct::{Base64, Encoding};
 use core::fmt::Debug;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::{
     any::Any,
+    fmt::Display,
     fs::{File, Metadata},
     io,
     os::unix::prelude::PermissionsExt,
@@ -110,6 +112,29 @@ pub struct FileMetadata {
     pub modified: u128,
     pub created: u128,
     pub chunks: Vec<ChunkId>,
+}
+
+impl Display for FileMetadata {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut chunks = String::new();
+        for chunk in &self.chunks {
+            chunks.push_str(&format!("\n - {}", Base64::encode_string(&chunk.0)))
+        }
+        write!(
+            f,
+            r#"Path: {:?}
+File hash: {}
+Permissions: {}
+Created: {} Modified: {}
+Chunks: {}"#,
+            self.file_id.path,
+            Base64::encode_string(&self.file_id.hash),
+            self.permissions,
+            self.created,
+            self.modified,
+            chunks,
+        )
+    }
 }
 
 impl FileMetadata {
