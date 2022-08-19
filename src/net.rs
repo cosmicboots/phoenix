@@ -134,6 +134,17 @@ pub struct NetClient {
     noise: TransportState,
 }
 
+impl NetClient {
+    pub fn read_raw(&mut self, raw_msg: &[u8]) -> Result<Vec<u8>, Box<dyn Error>> {
+        let len = self.noise.read_message(&raw_msg, &mut self.buf)?;
+        Ok(self.buf[..len].to_vec())
+    }
+
+    pub fn clone_stream(&self) -> Result<TcpStream, io::Error> {
+        self.stream.try_clone()
+    }
+}
+
 impl NoiseConnection for NetClient {
     fn new(
         mut stream: TcpStream,
@@ -178,7 +189,7 @@ impl NoiseConnection for NetClient {
     }
 }
 
-fn recv(stream: &mut TcpStream) -> io::Result<Vec<u8>> {
+pub fn recv(stream: &mut TcpStream) -> io::Result<Vec<u8>> {
     let mut msg_len_buf = [0u8; 2];
     stream.read_exact(&mut msg_len_buf)?;
     let msg_len = u16::from_be_bytes(msg_len_buf) as usize;
