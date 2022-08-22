@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::{
     any::Any,
-    fmt::Display,
+    fmt::{Display, Write},
     fs::{File, Metadata},
     io,
     os::unix::prelude::PermissionsExt,
@@ -13,7 +13,7 @@ use std::{
     time, vec,
 };
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct Error(String);
 
 pub trait Argument: Debug {
@@ -24,7 +24,7 @@ pub trait Argument: Debug {
     fn as_any(&self) -> &dyn Any;
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct Version(pub u8);
 
 impl Argument for Version {
@@ -40,7 +40,7 @@ impl Argument for Version {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, PartialEq, Eq)]
 pub struct FileId {
     pub path: PathBuf,
     pub hash: [u8; 32],
@@ -87,7 +87,7 @@ impl Argument for FileId {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
+#[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Clone)]
 pub struct ChunkId(pub Vec<u8>);
 
 impl Argument for ChunkId {
@@ -104,7 +104,7 @@ impl Argument for ChunkId {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, PartialEq, Eq)]
 pub struct FileMetadata {
     pub file_id: FileId,
     pub file_name: String,
@@ -118,7 +118,7 @@ impl Display for FileMetadata {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let mut chunks = String::new();
         for chunk in &self.chunks {
-            chunks.push_str(&format!("\n - {}", Base64::encode_string(&chunk.0)))
+            let _ = write!(chunks, "\n - {}", Base64::encode_string(&chunk.0));
         }
         write!(
             f,
@@ -235,7 +235,7 @@ impl Argument for FileMetadata {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct Chunk {
     pub id: ChunkId,
     pub data: Vec<u8>,
@@ -262,7 +262,7 @@ impl Argument for Chunk {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct ResponseCode(u16);
 
 impl Argument for ResponseCode {

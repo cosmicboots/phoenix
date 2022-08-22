@@ -62,7 +62,7 @@ pub fn start_client(config_file: &Path, path: &Path) {
         .watch(watch_path, notify::RecursiveMode::Recursive)
         .unwrap();
 
-    let tx = msg_queue.clone();
+    let tx = msg_queue;
     thread::spawn(move || {
         let mut stream = listen_stream;
         debug!("Listening for messages on tcp stram");
@@ -73,30 +73,29 @@ pub fn start_client(config_file: &Path, path: &Path) {
     });
 
     loop {
-        match incoming_msg.recv() {
-            Ok(msg) => debug!("Message: {:?}", msg),
-            Err(_) => todo!(),
+        if let Ok(msg) = incoming_msg.recv() {
+            match msg {
+                QueueItem::ServerMsg(push) => println!("{:?}", push),
+                QueueItem::FileMsg(event) => handle_fs_event(&mut client, event),
+            }
         }
     }
+}
 
-    //loop {
-    //    match rx.recv() {
-    //        Ok(event) => match event {
-    //            DebouncedEvent::Rename(_, p)
-    //            | DebouncedEvent::Create(p)
-    //            | DebouncedEvent::Write(p)
-    //            | DebouncedEvent::Chmod(p) => {
-    //                match client.send_file_info(&p) {
-    //                    Ok(chunks) => {
-    //                        info!("Successfully sent the file");
-    //                        client.send_chunks(&p, chunks).unwrap();
-    //                    }
-    //                    Err(e) => error!("{:?}", e),
-    //                };
-    //            }
-    //            _ => {}
-    //        },
-    //        Err(e) => error!("File system watch error: {:?}", e),
-    //    }
-    //}
+fn handle_fs_event(client: &mut Client, event: DebouncedEvent) {
+    match event {
+        DebouncedEvent::Rename(_, p)
+        | DebouncedEvent::Create(p)
+        | DebouncedEvent::Write(p)
+        | DebouncedEvent::Chmod(p) => {
+            match client.send_file_info(&p) {
+                Ok(chunks) => {
+                    info!("Successfully sent the file");
+                    client.send_chunks(&p, chunks).unwrap();
+                }
+                Err(e) => error!("{:?}", e),
+            };
+        }
+        _ => {}
+    }
 }

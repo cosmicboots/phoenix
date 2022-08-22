@@ -2,11 +2,13 @@
 
 #![allow(dead_code)]
 
-use std::path::Path;
-
 use base64ct::{Base64, Encoding};
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
-use sled::{transaction::ConflictableTransactionResult, Transactional, Tree};
+use sled::{
+    transaction::{ConflictableTransactionResult, TransactionalTree},
+    Transactional, Tree,
+};
+use std::{fmt::Write, path::Path};
 
 use crate::messaging::arguments::{Chunk, ChunkId, FileMetadata};
 
@@ -69,12 +71,13 @@ impl Db {
         // TODO: Improve error handling
         (&self.file_table, &self.chunk_count)
             .transaction(
-                |(ft, cc)| -> ConflictableTransactionResult<(), sled::Error> {
+                |(ft , cc): &(TransactionalTree, TransactionalTree)| -> ConflictableTransactionResult<(), sled::Error> {
                     // Add the file metadata to the file table
                     ft.insert(&file.file_id.hash, &*value).unwrap();
                     // Add all the chunks into the chunk count table
                     for chunk in &file.chunks {
                         let mut wtr = vec![];
+                        // TODO: this probably should be done with a merge operation
                         cc.insert(
                             chunk.0.to_owned(),
                             match cc.get(&chunk.0).unwrap() {
@@ -208,7 +211,7 @@ impl Db {
         while let Some(Ok((key, value))) = table.next() {
             let mut chunk_data = String::new();
             for byte in value.iter() {
-                chunk_data.push_str(&format!("{:02x} ", byte));
+                let _ = write!(chunk_data, "{:02x} ", byte);
             }
             println!(
                 "Chunk ID: {}\nData: {}",

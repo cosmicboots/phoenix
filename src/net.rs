@@ -136,7 +136,7 @@ pub struct NetClient {
 
 impl NetClient {
     pub fn read_raw(&mut self, raw_msg: &[u8]) -> Result<Vec<u8>, Box<dyn Error>> {
-        let len = self.noise.read_message(&raw_msg, &mut self.buf)?;
+        let len = self.noise.read_message(raw_msg, &mut self.buf)?;
         Ok(self.buf[..len].to_vec())
     }
 

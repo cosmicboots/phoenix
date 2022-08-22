@@ -60,7 +60,7 @@ use arguments::{Argument, Version};
 //struct Version(u8);
 
 /// Defines the different available protocol verbs/directives.
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub enum Directive {
     AnnounceVersion,
     ListFiles,
