@@ -72,6 +72,14 @@ impl Db {
         (&self.file_table, &self.chunk_count)
             .transaction(
                 |(ft , cc): &(TransactionalTree, TransactionalTree)| -> ConflictableTransactionResult<(), sled::Error> {
+                    // Prevent duplicate entries with the same data
+                    if let Some(x) = ft.get(&file.file_id.hash)? {
+                        if bincode::deserialize::<FileMetadata>(&x).unwrap() == *file {
+                            warn!("Duplicate file attempted to add to the file store");
+                            return Ok(());
+                        }
+                    }
+
                     // Add the file metadata to the file table
                     ft.insert(&file.file_id.hash, &*value).unwrap();
                     // Add all the chunks into the chunk count table

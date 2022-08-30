@@ -104,7 +104,7 @@ impl Argument for ChunkId {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct FileMetadata {
     pub file_id: FileId,
     pub file_name: String,
@@ -113,6 +113,17 @@ pub struct FileMetadata {
     pub created: u128,
     pub chunks: Vec<ChunkId>,
 }
+
+impl PartialEq for FileMetadata {
+    fn eq(&self, other: &Self) -> bool {
+        self.file_id == other.file_id
+            && self.file_name == other.file_name
+            && self.permissions == other.permissions
+            && self.chunks == other.chunks
+    }
+}
+
+impl Eq for FileMetadata {}
 
 impl Display for FileMetadata {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
