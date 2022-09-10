@@ -48,8 +48,9 @@ impl Client {
     }
 
     /// Send file metadata to the server
-    pub fn send_file_info(&mut self, path: &Path) -> Result<Vec<ChunkId>, Box<dyn Error>> {
-        let file_info = get_file_info(path)?;
+    pub fn send_file_info(&mut self, base: &Path, path: &Path) -> Result<Vec<ChunkId>, Box<dyn Error>> {
+        let mut file_info = get_file_info(path)?;
+        file_info.file_id.path = path.strip_prefix(base).unwrap().to_owned();
         let chunks = file_info.chunks.clone();
         let msg = self
             .builder
@@ -112,7 +113,7 @@ fn chunk_file(path: &Path) -> Result<Vec<[u8; 32]>, io::Error> {
 /// Get the file metadata from a file at a given path.
 pub fn get_file_info(path: &Path) -> Result<FileMetadata, std::io::Error> {
     let md = fs::metadata(path)?;
-    let file_id = FileId::new(path.to_owned())?;
+    let mut file_id = FileId::new(path.to_owned())?;
     let chunks = chunk_file(path)?;
     Ok(FileMetadata::new(file_id, md, &chunks).unwrap())
 }

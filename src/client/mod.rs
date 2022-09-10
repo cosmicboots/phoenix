@@ -59,7 +59,7 @@ pub fn start_client(config_file: &Path, path: &Path) {
 
     info!("Watching files");
     watcher
-        .watch(watch_path, notify::RecursiveMode::Recursive)
+        .watch(&watch_path, notify::RecursiveMode::Recursive)
         .unwrap();
 
     let tx = msg_queue;
@@ -75,20 +75,22 @@ pub fn start_client(config_file: &Path, path: &Path) {
     loop {
         if let Ok(msg) = incoming_msg.recv() {
             match msg {
-                QueueItem::ServerMsg(push) => println!("{:?}", push),
-                QueueItem::FileMsg(event) => handle_fs_event(&mut client, event),
+                QueueItem::ServerMsg(push) => println!("Server message: {:?}", push),
+                QueueItem::FileMsg(event) => {
+                    handle_fs_event(&mut client, &watch_path.canonicalize().unwrap(), event)
+                }
             }
         }
     }
 }
 
-fn handle_fs_event(client: &mut Client, event: DebouncedEvent) {
+fn handle_fs_event(client: &mut Client, watch_path: &Path, event: DebouncedEvent) {
     match event {
         DebouncedEvent::Rename(_, p)
         | DebouncedEvent::Create(p)
         | DebouncedEvent::Write(p)
         | DebouncedEvent::Chmod(p) => {
-            match client.send_file_info(&p) {
+            match client.send_file_info(&watch_path, &p) {
                 Ok(chunks) => {
                     info!("Successfully sent the file");
                     client.send_chunks(&p, chunks).unwrap();

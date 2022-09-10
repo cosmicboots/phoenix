@@ -81,7 +81,7 @@ impl Db {
                     }
 
                     // Add the file metadata to the file table
-                    ft.insert(&file.file_id.hash, &*value).unwrap();
+                    ft.insert(file.file_id.path.to_str().unwrap().as_bytes(), &*value).unwrap();
                     // Add all the chunks into the chunk count table
                     for chunk in &file.chunks {
                         let mut wtr = vec![];
