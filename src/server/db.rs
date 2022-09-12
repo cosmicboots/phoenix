@@ -6,9 +6,9 @@ use base64ct::{Base64, Encoding};
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use sled::{
     transaction::{ConflictableTransactionResult, TransactionalTree},
-    Transactional, Tree,
+    IVec, Transactional, Tree,
 };
-use std::{fmt::Write, path::Path};
+use std::{collections::HashSet, fmt::Write, path::Path};
 
 use crate::messaging::arguments::{Chunk, ChunkId, FileMetadata};
 
@@ -42,10 +42,13 @@ impl Db {
     /// - [`CHUNK_COUNT`](static.CHUNK_COUNT.html)
     pub fn new(path: &Path) -> sled::Result<Db> {
         let db = sled::open(path)?;
+        let file_table = db.open_tree(FILE_TABLE)?;
+        let chunk_table = db.open_tree(CHUNK_TABLE)?;
+        let chunk_count = db.open_tree(CHUNK_COUNT)?;
         Ok(Db {
-            file_table: db.open_tree(FILE_TABLE)?,
-            chunk_table: db.open_tree(CHUNK_TABLE)?,
-            chunk_count: db.open_tree(CHUNK_COUNT)?,
+            file_table,
+            chunk_table,
+            chunk_count,
         })
     }
 
@@ -69,43 +72,57 @@ impl Db {
             Err(_) => panic!("Couldn't serialize file to store in database"),
         };
         // TODO: Improve error handling
-        (&self.file_table, &self.chunk_count)
+        (&self.file_table, &self.chunk_count, &self.chunk_table)
             .transaction(
-                |(ft , cc): &(TransactionalTree, TransactionalTree)| -> ConflictableTransactionResult<(), sled::Error> {
+                |(ft , cc, ct): &(TransactionalTree, TransactionalTree, TransactionalTree)| -> ConflictableTransactionResult<(), sled::Error> {
+                    let mut insert_chunks = file.chunks.clone();
+
                     // Prevent duplicate entries with the same data
-                    if let Some(x) = ft.get(&file.file_id.hash)? {
-                        if bincode::deserialize::<FileMetadata>(&x).unwrap() == *file {
+                    if let Some(x) = ft.get(&file.file_id.path.to_str().unwrap().as_bytes())? {
+                        let old_file = bincode::deserialize::<FileMetadata>(&x).unwrap();
+                        if old_file == *file {
+                            // The file is the same as the old
                             warn!("Duplicate file attempted to add to the file store");
                             return Ok(());
+                        } else {
+                            let mut old_chunks = HashSet::new();
+                            old_file.chunks.iter().for_each(|x| {old_chunks.insert(x);});
+
+                            let mut new_chunks = HashSet::new();
+                            file.chunks.iter().for_each(|x| {new_chunks.insert(x);});
+
+                            println!("Calculating chunk differences");
+
+                            let chunks_to_remove = old_chunks.difference(&new_chunks);
+                            let chunks_to_add = new_chunks.difference(&old_chunks);
+
+                            for chunk in chunks_to_remove {
+                                let count = cc.remove(&*chunk.0)?;
+                                if let Some(x) = count {
+                                    let mut buf = [0u8; 4];
+                                    buf.copy_from_slice(&x);
+                                    if u32::from_le_bytes(buf) == 1 {
+                                        ct.remove(&*chunk.0)?;
+                                    }
+                                }
+                            }
+
+                            insert_chunks = vec![];
+                            for chunk in chunks_to_add {
+                                insert_chunks.push((*chunk).clone());
+                            }
                         }
                     }
 
                     // Add the file metadata to the file table
                     ft.insert(file.file_id.path.to_str().unwrap().as_bytes(), &*value).unwrap();
                     // Add all the chunks into the chunk count table
-                    for chunk in &file.chunks {
-                        let mut wtr = vec![];
+                    for chunk in insert_chunks {
                         // TODO: this probably should be done with a merge operation
-                        cc.insert(
-                            chunk.0.to_owned(),
-                            match cc.get(&chunk.0).unwrap() {
-                                Some(x) => {
-                                    // Increment value already stored
-                                    let mut rdr = std::io::Cursor::new(x);
-                                    wtr.write_u32::<LittleEndian>(
-                                        rdr.read_u32::<LittleEndian>().unwrap() + 1,
-                                    )
-                                    .unwrap();
-                                    wtr
-                                }
-                                None => {
-                                    // If no value, make it 1
-                                    wtr.write_u32::<LittleEndian>(1).unwrap();
-                                    wtr
-                                }
-                            },
-                        )
-                        .unwrap();
+                        match rc_merge(cc.get(&chunk.0)?, 1) {
+                            Some(x) => cc.insert(&*chunk.0, x)?,
+                            None => cc.remove(&*chunk.0)?,
+                        };
                     }
                     Ok(())
                 },
@@ -209,8 +226,8 @@ impl Db {
         println!("\n=== Printing file_table ===");
         while let Some(Ok((key, value))) = table.next() {
             println!(
-                "Key: {:?}\nValue:\n{}",
-                Base64::encode_string(&key),
+                "Key: {:?}\n{}",
+                String::from_utf8(key.to_vec()).unwrap(),
                 bincode::deserialize::<FileMetadata>(&value).unwrap()
             );
         }
@@ -239,6 +256,17 @@ impl Db {
             );
         }
     }
+}
+
+fn rc_merge(old_value: Option<IVec>, increment: u32) -> Option<Vec<u8>> {
+    let mut buf = [0u8; 4];
+    let mut x = 0;
+    if let Some(v) = old_value {
+        buf.copy_from_slice(&v);
+        x = u32::from_le_bytes(buf);
+    }
+
+    Some((x + increment).to_le_bytes().to_vec())
 }
 
 #[cfg(test)]

@@ -87,7 +87,7 @@ impl Argument for FileId {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Clone)]
+#[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Clone, Hash)]
 pub struct ChunkId(pub Vec<u8>);
 
 impl Argument for ChunkId {
