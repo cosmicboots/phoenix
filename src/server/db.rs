@@ -66,6 +66,13 @@ impl Db {
     /// This also increments the referenced values in the [`chunk_count`](#structfield.chunk_count)
     /// table; however, it doesn't actually insert any data into the
     /// [`chunk_table`](#structfield.chunk_table) table.
+    ///
+    /// This function also doubles as an update file function. If the fily being added is already
+    /// in the database, there will be a check to see if it's identical. If the file has changed, a
+    /// difference operation runst to see which chunks changed.
+    ///
+    /// The new chunks are then inserted into the database, and the chunks no longer used are
+    /// removed.
     pub fn add_file(&self, file: &FileMetadata) -> sled::Result<()> {
         let value = match bincode::serialize(&file) {
             Ok(x) => x,

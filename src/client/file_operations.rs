@@ -113,7 +113,7 @@ fn chunk_file(path: &Path) -> Result<Vec<[u8; 32]>, io::Error> {
 /// Get the file metadata from a file at a given path.
 pub fn get_file_info(path: &Path) -> Result<FileMetadata, std::io::Error> {
     let md = fs::metadata(path)?;
-    let mut file_id = FileId::new(path.to_owned())?;
+    let file_id = FileId::new(path.to_owned())?;
     let chunks = chunk_file(path)?;
     Ok(FileMetadata::new(file_id, md, &chunks).unwrap())
 }
