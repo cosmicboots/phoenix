@@ -98,18 +98,20 @@ impl Db {
                             let mut new_chunks = HashSet::new();
                             file.chunks.iter().for_each(|x| {new_chunks.insert(x);});
 
-                            println!("Calculating chunk differences");
-
                             let chunks_to_remove = old_chunks.difference(&new_chunks);
                             let chunks_to_add = new_chunks.difference(&old_chunks);
 
                             for chunk in chunks_to_remove {
-                                let count = cc.remove(&*chunk.0)?;
+                                let count = rc_merge(cc.get(&*chunk.0)?, -1);
+
+
                                 if let Some(x) = count {
+                                    cc.insert(&*chunk.0, &*x)?;
                                     let mut buf = [0u8; 4];
                                     buf.copy_from_slice(&x);
-                                    if u32::from_le_bytes(buf) == 1 {
+                                    if u32::from_le_bytes(buf) == 0 {
                                         ct.remove(&*chunk.0)?;
+                                        cc.remove(&*chunk.0)?;
                                     }
                                 }
                             }
@@ -126,9 +128,8 @@ impl Db {
                     // Add all the chunks into the chunk count table
                     for chunk in insert_chunks {
                         // TODO: this probably should be done with a merge operation
-                        match rc_merge(cc.get(&chunk.0)?, 1) {
-                            Some(x) => cc.insert(&*chunk.0, x)?,
-                            None => cc.remove(&*chunk.0)?,
+                        if let Some(x) = rc_merge(cc.get(&chunk.0)?, 1) {
+                            cc.insert(&*chunk.0, x)?;
                         };
                     }
                     Ok(())
@@ -265,7 +266,9 @@ impl Db {
     }
 }
 
-fn rc_merge(old_value: Option<IVec>, increment: u32) -> Option<Vec<u8>> {
+/// This is a poor mans merge operator for TransactionalTrees because they don't support proper
+/// merge operations.
+fn rc_merge(old_value: Option<IVec>, increment: i32) -> Option<Vec<u8>> {
     let mut buf = [0u8; 4];
     let mut x = 0;
     if let Some(v) = old_value {
@@ -273,7 +276,7 @@ fn rc_merge(old_value: Option<IVec>, increment: u32) -> Option<Vec<u8>> {
         x = u32::from_le_bytes(buf);
     }
 
-    Some((x + increment).to_le_bytes().to_vec())
+    Some((x as i32 + increment).to_le_bytes().to_vec())
 }
 
 #[cfg(test)]
