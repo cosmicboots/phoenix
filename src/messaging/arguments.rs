@@ -247,6 +247,49 @@ impl Argument for FileMetadata {
 }
 
 #[derive(Debug, PartialEq, Eq)]
+pub struct FileList(Vec<FileMetadata>);
+
+impl Argument for FileList {
+    fn to_bin(&self) -> Vec<u8> {
+        let mut files: Vec<u8> = vec![];
+
+        for file in &self.0 {
+            let data = &file.to_bin();
+            files.extend_from_slice(&(data.len() as u16).to_be_bytes());
+            files.extend_from_slice(data);
+        }
+
+        files
+    }
+
+    fn from_bin(data: &[u8]) -> Result<Self, Error> {
+        let mut buf = [0u8; 2];
+        let mut cur = 0;
+        let mut files: Vec<FileMetadata> = vec![];
+
+        while cur < data.len() {
+            buf.copy_from_slice(&data[cur..cur + 2]);
+            cur += 2;
+            let size = u16::from_be_bytes(buf);
+
+            if data[cur..].len() < size.into() {
+                return Err(Error(
+                    "Invalid FileList format. Failed to convert from binary.".to_owned(),
+                ));
+            }
+
+            files.push(FileMetadata::from_bin(&data[cur..size.into()])?);
+            cur += size as usize;
+        }
+        Ok(FileList(files))
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+}
+
+#[derive(Debug, PartialEq, Eq)]
 pub struct Chunk {
     pub id: ChunkId,
     pub data: Vec<u8>,
