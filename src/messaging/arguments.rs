@@ -340,4 +340,9 @@ mod tests {
             ChunkId(b"Hello world".to_vec())
         );
     }
+
+    #[test]
+    fn test_argument_filelist() {
+        todo!()
+    }
 }
