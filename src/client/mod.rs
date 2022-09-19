@@ -67,7 +67,6 @@ pub fn start_client(config_file: &Path, path: &Path) {
         let mut stream = listen_stream;
         debug!("Listening for messages on tcp stram");
         while let Ok(msg) = net::recv(&mut stream) {
-            debug!("TCP MESSAGE: {:?}", msg);
             tx.send(QueueItem::ServerMsg(msg)).unwrap();
         }
     });
@@ -75,8 +74,10 @@ pub fn start_client(config_file: &Path, path: &Path) {
     // TODO: Handle this information in the future
     let files = file_operations::generate_file_list(&watch_path).unwrap();
     for file in files.0 {
-        debug!("Found File: {:?}", file.file_id.path);
+        debug!("Found File: {:?}", file.path);
     }
+
+    client.request_file_list().unwrap();
 
     loop {
         if let Ok(msg) = incoming_msg.recv() {

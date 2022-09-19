@@ -247,7 +247,7 @@ impl Argument for FileMetadata {
 }
 
 #[derive(Debug, PartialEq, Eq)]
-pub struct FileList(pub Vec<FileMetadata>);
+pub struct FileList(pub Vec<FileId>);
 
 impl Argument for FileList {
     fn to_bin(&self) -> Vec<u8> {
@@ -265,7 +265,7 @@ impl Argument for FileList {
     fn from_bin(data: &[u8]) -> Result<Self, Error> {
         let mut buf = [0u8; 2];
         let mut cur = 0;
-        let mut files: Vec<FileMetadata> = vec![];
+        let mut files: Vec<FileId> = vec![];
 
         while cur < data.len() {
             buf.copy_from_slice(&data[cur..cur + 2]);
@@ -278,7 +278,7 @@ impl Argument for FileList {
                 ));
             }
 
-            files.push(FileMetadata::from_bin(&data[cur..size.into()])?);
+            files.push(FileId::from_bin(&data[cur..size.into()])?);
             cur += size as usize;
         }
         Ok(FileList(files))
@@ -332,6 +332,26 @@ impl Argument for ResponseCode {
 
     fn as_any(&self) -> &dyn Any {
         self
+    }
+}
+
+#[derive(Debug)]
+pub struct Dummy {}
+
+impl Argument for Dummy {
+    fn to_bin(&self) -> Vec<u8> {
+        todo!()
+    }
+
+    fn from_bin(data: &[u8]) -> Result<Self, Error>
+    where
+        Self: Sized,
+    {
+        todo!()
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        todo!()
     }
 }
 

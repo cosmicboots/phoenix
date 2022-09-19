@@ -46,16 +46,10 @@ pub fn start_server(config_file: &Path) {
             // Complete noise handshake
             info!("Server completed handshake");
 
-            debug!("Sending test message");
-            let mut msg_builder = MessageBuilder::new(1);
-            svc.send(
-                &msg_builder
-                    .encode_message(Directive::AnnounceVersion, Some(arguments::Version(1))),
-            )
-            .unwrap();
-
             while let Ok(raw_msg) = &svc.recv() {
+                let mut msg_builder = MessageBuilder::new(1);
                 let msg = MessageBuilder::decode_message(raw_msg).unwrap();
+                msg_builder.increment_counter();
                 println!("{:?}", msg);
                 match msg.verb {
                     Directive::SendFile => {
@@ -77,6 +71,11 @@ pub fn start_server(config_file: &Path) {
                                 .unwrap(),
                         )
                         .expect("Failed to add chunk to database");
+                    }
+                    Directive::ListFiles => {
+                        let files = db.get_files().unwrap();
+                        let msg = msg_builder.encode_message(Directive::SendFiles, Some(files));
+                        let _ = &svc.send(&msg);
                     }
                     _ => todo!(),
                 }

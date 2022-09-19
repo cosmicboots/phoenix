@@ -85,6 +85,12 @@ impl Client {
         }
         Ok(())
     }
+
+    pub fn request_file_list(&mut self) -> Result<(), Box<dyn Error>> {
+        let msg = self.builder.encode_message::<arguments::Dummy>(Directive::ListFiles, None);
+        self.msg_queue.send(msg)?;
+        Ok(())
+    }
 }
 
 /// Calculate chunk boundries and file hash
@@ -125,8 +131,8 @@ pub fn generate_file_list(path: &Path) -> Result<FileList, std::io::Error> {
     Ok(FileList(recursive_file_list(path)?))
 }
 
-fn recursive_file_list(path: &Path) -> Result<Vec<FileMetadata>, std::io::Error> {
-    let mut files: Vec<FileMetadata> = vec![];
+fn recursive_file_list(path: &Path) -> Result<Vec<FileId>, std::io::Error> {
+    let mut files: Vec<FileId> = vec![];
 
     for entry in fs::read_dir(path)? {
         let entry = entry?;
@@ -134,7 +140,7 @@ fn recursive_file_list(path: &Path) -> Result<Vec<FileMetadata>, std::io::Error>
         if path.is_dir() {
             files.append(&mut recursive_file_list(&path)?);
         } else {
-            files.push(get_file_info(&path)?);
+            files.push(get_file_info(&path)?.file_id);
         }
     }
     Ok(files)

@@ -10,7 +10,7 @@ use sled::{
 };
 use std::{collections::HashSet, fmt::Write, path::Path};
 
-use crate::messaging::arguments::{Chunk, ChunkId, FileMetadata};
+use crate::messaging::arguments::{Argument, Chunk, ChunkId, FileMetadata, FileId, FileList};
 
 /// Static name of the file_table
 static FILE_TABLE: &str = "file_table";
@@ -229,6 +229,17 @@ impl Db {
             .unwrap();
     }
 
+    pub fn get_files(&self) -> Result<FileList, sled::Error> {
+        let mut files: Vec<FileId> = vec![];
+        for file in self.file_table.iter() {
+            let file_struct = bincode::deserialize::<FileMetadata>(&file?.1)
+                .expect("Failed to create FileMetadata struct from the database.");
+            files.push(file_struct.file_id);
+        }
+        Ok(FileList(files))
+    }
+
+    /// Dump the current database to stdout
     pub fn dump_tree(&self) {
         let mut table = self.file_table.iter();
         println!("\n=== Printing file_table ===");
