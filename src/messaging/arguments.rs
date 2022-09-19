@@ -247,7 +247,7 @@ impl Argument for FileMetadata {
 }
 
 #[derive(Debug, PartialEq, Eq)]
-pub struct FileList(Vec<FileMetadata>);
+pub struct FileList(pub Vec<FileMetadata>);
 
 impl Argument for FileList {
     fn to_bin(&self) -> Vec<u8> {

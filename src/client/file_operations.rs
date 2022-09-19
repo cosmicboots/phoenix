@@ -11,7 +11,7 @@ use sha2::{Digest, Sha256};
 
 use crate::{
     messaging::{
-        arguments::{self, Argument, ChunkId, FileId, FileMetadata},
+        arguments::{self, Argument, ChunkId, FileId, FileMetadata, FileList},
         Directive, MessageBuilder,
     },
     net::{NetClient, NoiseConnection},
@@ -116,4 +116,26 @@ pub fn get_file_info(path: &Path) -> Result<FileMetadata, std::io::Error> {
     let file_id = FileId::new(path.to_owned())?;
     let chunks = chunk_file(path)?;
     Ok(FileMetadata::new(file_id, md, &chunks).unwrap())
+}
+
+/// Generate a file listing of the watched directory.
+///
+/// This will be used to preform an initial synchronization when the clients connect.
+pub fn generate_file_list(path: &Path) -> Result<FileList, std::io::Error> {
+    Ok(FileList(recursive_file_list(path)?))
+}
+
+fn recursive_file_list(path: &Path) -> Result<Vec<FileMetadata>, std::io::Error> {
+    let mut files: Vec<FileMetadata> = vec![];
+
+    for entry in fs::read_dir(path)? {
+        let entry = entry?;
+        let path = entry.path();
+        if path.is_dir() {
+            files.append(&mut recursive_file_list(&path)?);
+        } else {
+            files.push(get_file_info(&path)?);
+        }
+    }
+    Ok(files)
 }
