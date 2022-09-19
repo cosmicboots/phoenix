@@ -72,6 +72,12 @@ pub fn start_client(config_file: &Path, path: &Path) {
         }
     });
 
+    // TODO: Handle this information in the future
+    let files = file_operations::generate_file_list(&watch_path).unwrap();
+    for file in files.0 {
+        debug!("Found File: {:?}", file.file_id.path);
+    }
+
     loop {
         if let Ok(msg) = incoming_msg.recv() {
             match msg {
