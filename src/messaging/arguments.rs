@@ -278,7 +278,7 @@ impl Argument for FileList {
                 ));
             }
 
-            files.push(FileId::from_bin(&data[cur..size.into()])?);
+            files.push(FileId::from_bin(&data[cur..(size+2).into()])?);
             cur += size as usize;
         }
         Ok(FileList(files))
