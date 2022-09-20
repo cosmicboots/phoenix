@@ -82,7 +82,7 @@ impl TryFrom<u16> for Directive {
         match num {
             0 => Ok(Directive::AnnounceVersion),
             1 => Ok(Directive::ListFiles),
-            2 => Ok(Directive::ListFiles),
+            2 => Ok(Directive::SendFiles),
             3 => Ok(Directive::RequestFile),
             4 => Ok(Directive::RequestChunk),
             5 => Ok(Directive::SendFile),

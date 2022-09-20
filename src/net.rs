@@ -143,6 +143,13 @@ impl NetClient {
     pub fn clone_stream(&self) -> Result<TcpStream, io::Error> {
         self.stream.try_clone()
     }
+
+    pub fn decrypt(&mut self, msg: &[u8]) -> Result<Vec<u8>, snow::Error> {
+        let len = self
+            .noise
+            .read_message(msg, &mut self.buf)?;
+        Ok(self.buf[..len].to_vec())
+    }
 }
 
 impl NoiseConnection for NetClient {

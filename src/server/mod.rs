@@ -5,7 +5,7 @@ use base64ct::{Base64, Encoding};
 use db::Db;
 
 use crate::messaging::{
-    arguments::{self, Chunk, FileMetadata},
+    arguments::{Chunk, FileMetadata},
     Directive,
 };
 
@@ -43,8 +43,6 @@ pub fn start_server(config_file: &Path) {
             )
             .unwrap();
             info!("Connection established!");
-            // Complete noise handshake
-            info!("Server completed handshake");
 
             while let Ok(raw_msg) = &svc.recv() {
                 let mut msg_builder = MessageBuilder::new(1);
@@ -74,8 +72,9 @@ pub fn start_server(config_file: &Path) {
                     }
                     Directive::ListFiles => {
                         let files = db.get_files().unwrap();
+                        debug!("Sending: {:?}", files);
                         let msg = msg_builder.encode_message(Directive::SendFiles, Some(files));
-                        let _ = &svc.send(&msg);
+                        let _ = &svc.send(dbg!(&msg));
                     }
                     _ => todo!(),
                 }

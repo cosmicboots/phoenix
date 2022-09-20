@@ -10,7 +10,7 @@ use sled::{
 };
 use std::{collections::HashSet, fmt::Write, path::Path};
 
-use crate::messaging::arguments::{Argument, Chunk, ChunkId, FileMetadata, FileId, FileList};
+use crate::messaging::arguments::{Chunk, ChunkId, FileMetadata, FileId, FileList};
 
 /// Static name of the file_table
 static FILE_TABLE: &str = "file_table";

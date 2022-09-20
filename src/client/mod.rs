@@ -15,12 +15,12 @@ use file_operations::Client;
 
 use crate::{
     config::{ClientConfig, Config},
-    messaging,
-    net::{self, NetClient, NoiseConnection},
+    messaging::{self, MessageBuilder},
+    net::{NetClient, NoiseConnection},
 };
 
 #[derive(Debug)]
-enum QueueItem {
+pub enum QueueItem {
     ServerMsg(Vec<u8>),
     FileMsg(DebouncedEvent),
 }
@@ -35,9 +35,10 @@ pub fn start_client(config_file: &Path, path: &Path) {
     )
     .unwrap();
 
-    let listen_stream = net_client.clone_stream().unwrap();
+    let (msg_queue, incoming_msg): (Sender<QueueItem>, Receiver<QueueItem>) = mpsc::channel();
+
     let builder = messaging::MessageBuilder::new(1);
-    let mut client = Client::new(builder, net_client);
+    let mut client = Client::new(builder, net_client, msg_queue.clone());
 
     let watch_path = PathBuf::from(path);
 
@@ -46,11 +47,9 @@ pub fn start_client(config_file: &Path, path: &Path) {
         std::process::exit(1);
     }
 
-    let (msg_queue, incoming_msg): (Sender<QueueItem>, Receiver<QueueItem>) = mpsc::channel();
-
     let (tx, rx) = mpsc::channel();
     let mut watcher = watcher(tx, Duration::from_secs(1)).unwrap();
-    let tx = msg_queue.clone();
+    let tx = msg_queue;
     thread::spawn(move || {
         while let Ok(x) = rx.recv() {
             tx.send(QueueItem::FileMsg(x)).unwrap();
@@ -61,15 +60,6 @@ pub fn start_client(config_file: &Path, path: &Path) {
     watcher
         .watch(&watch_path, notify::RecursiveMode::Recursive)
         .unwrap();
-
-    let tx = msg_queue;
-    thread::spawn(move || {
-        let mut stream = listen_stream;
-        debug!("Listening for messages on tcp stram");
-        while let Ok(msg) = net::recv(&mut stream) {
-            tx.send(QueueItem::ServerMsg(msg)).unwrap();
-        }
-    });
 
     // TODO: Handle this information in the future
     let files = file_operations::generate_file_list(&watch_path).unwrap();
@@ -82,7 +72,11 @@ pub fn start_client(config_file: &Path, path: &Path) {
     loop {
         if let Ok(msg) = incoming_msg.recv() {
             match msg {
-                QueueItem::ServerMsg(push) => println!("Server message: {:?}", push),
+                QueueItem::ServerMsg(push) => {
+                    // TODO: decrypt this message using noise
+                    let msg = MessageBuilder::decode_message(dbg!(&push));
+                    println!("Server message: {:?}", msg);
+                }
                 QueueItem::FileMsg(event) => {
                     handle_fs_event(&mut client, &watch_path.canonicalize().unwrap(), event)
                 }
@@ -97,7 +91,7 @@ fn handle_fs_event(client: &mut Client, watch_path: &Path, event: DebouncedEvent
         | DebouncedEvent::Create(p)
         | DebouncedEvent::Write(p)
         | DebouncedEvent::Chmod(p) => {
-            match client.send_file_info(&watch_path, &p) {
+            match client.send_file_info(watch_path, &p) {
                 Ok(chunks) => {
                     info!("Successfully sent the file");
                     client.send_chunks(&p, chunks).unwrap();

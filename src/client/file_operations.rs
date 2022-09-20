@@ -3,7 +3,10 @@ use std::{
     fs::{self, File},
     io::{self, Read, Seek, SeekFrom},
     path::Path,
-    sync::mpsc::{self, Receiver, Sender},
+    sync::{
+        mpsc::{self, Receiver, Sender},
+        Arc, Mutex,
+    },
     thread,
 };
 
@@ -11,11 +14,13 @@ use sha2::{Digest, Sha256};
 
 use crate::{
     messaging::{
-        arguments::{self, Argument, ChunkId, FileId, FileMetadata, FileList},
+        arguments::{self, Argument, ChunkId, FileId, FileList, FileMetadata},
         Directive, MessageBuilder,
     },
-    net::{NetClient, NoiseConnection},
+    net::{self, NetClient, NoiseConnection},
 };
+
+use super::QueueItem;
 
 const CHUNK_SIZE: usize = 8; // 8 byte chunk size. TODO: automatically determine this. Probably
                              // using file size ranges
@@ -26,36 +31,53 @@ const CHUNK_SIZE: usize = 8; // 8 byte chunk size. TODO: automatically determine
 /// high level.
 pub struct Client {
     builder: MessageBuilder,
-    msg_queue: Sender<Vec<u8>>,
+    msg_queue_tx: Sender<Vec<u8>>,
 }
 
 impl Client {
-    pub fn new(builder: MessageBuilder, mut net_client: NetClient) -> Self {
+    pub fn new(builder: MessageBuilder, net_client: NetClient, msg_queue: Sender<QueueItem>) -> Self {
+        let net_client = Arc::new(Mutex::new(net_client));
+
         let (tx, rx): (Sender<Vec<u8>>, Receiver<Vec<u8>>) = mpsc::channel();
+        let client = net_client.clone();
         thread::spawn(move || {
             while let Ok(data) = rx.recv() {
-                if let Err(e) = net_client.send(&data) {
+                if let Err(e) = client.lock().unwrap().send(&data) {
                     // TODO: handle errors. Possibly requeue them
                     error!("{:?}", e);
                 };
             }
         });
 
+        let mut raw_stream = net_client.lock().unwrap().clone_stream().unwrap();
+        let client = net_client;
+        thread::spawn(move || {
+            while let Ok(raw_msg) = net::recv(&mut raw_stream) {
+                if let Ok(msg) = client.lock().unwrap().decrypt(&raw_msg) {
+                    msg_queue.send(QueueItem::ServerMsg(msg)).unwrap();
+                }
+            }
+        });
+
         Client {
             builder,
-            msg_queue: tx,
+            msg_queue_tx: tx,
         }
     }
 
     /// Send file metadata to the server
-    pub fn send_file_info(&mut self, base: &Path, path: &Path) -> Result<Vec<ChunkId>, Box<dyn Error>> {
+    pub fn send_file_info(
+        &mut self,
+        base: &Path,
+        path: &Path,
+    ) -> Result<Vec<ChunkId>, Box<dyn Error>> {
         let mut file_info = get_file_info(path)?;
         file_info.file_id.path = path.strip_prefix(base).unwrap().to_owned();
         let chunks = file_info.chunks.clone();
         let msg = self
             .builder
             .encode_message(Directive::SendFile, Some(file_info));
-        self.msg_queue.send(msg)?;
+        self.msg_queue_tx.send(msg)?;
         Ok(chunks)
     }
 
@@ -78,7 +100,7 @@ impl Client {
                 let msg = self
                     .builder
                     .encode_message(Directive::SendChunk, Some(chunk));
-                self.msg_queue.send(msg)?;
+                self.msg_queue_tx.send(msg)?;
             } else {
                 panic!("Chunks don't match up. File must have changed. This error will be handled in the future")
             }
@@ -87,8 +109,10 @@ impl Client {
     }
 
     pub fn request_file_list(&mut self) -> Result<(), Box<dyn Error>> {
-        let msg = self.builder.encode_message::<arguments::Dummy>(Directive::ListFiles, None);
-        self.msg_queue.send(msg)?;
+        let msg = self
+            .builder
+            .encode_message::<arguments::Dummy>(Directive::ListFiles, None);
+        self.msg_queue_tx.send(msg)?;
         Ok(())
     }
 }
