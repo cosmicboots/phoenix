@@ -1,6 +1,7 @@
 use base64ct::{Base64, Encoding};
 use notify::{watcher, DebouncedEvent, Watcher};
 use std::{
+    collections::HashSet,
     fs,
     net::TcpStream,
     path::{Path, PathBuf},
@@ -15,12 +16,16 @@ use file_operations::Client;
 
 use crate::{
     config::{ClientConfig, Config},
-    messaging,
-    net::{self, NetClient, NoiseConnection},
+    messaging::{
+        self,
+        arguments::{FileId, FileList},
+        Message, MessageBuilder,
+    },
+    net::{NetClient, NoiseConnection},
 };
 
 #[derive(Debug)]
-enum QueueItem {
+pub enum QueueItem {
     ServerMsg(Vec<u8>),
     FileMsg(DebouncedEvent),
 }
@@ -35,9 +40,10 @@ pub fn start_client(config_file: &Path, path: &Path) {
     )
     .unwrap();
 
-    let listen_stream = net_client.clone_stream().unwrap();
+    let (msg_queue, incoming_msg): (Sender<QueueItem>, Receiver<QueueItem>) = mpsc::channel();
+
     let builder = messaging::MessageBuilder::new(1);
-    let mut client = Client::new(builder, net_client);
+    let mut client = Client::new(builder, net_client, msg_queue.clone());
 
     let watch_path = PathBuf::from(path);
 
@@ -46,11 +52,9 @@ pub fn start_client(config_file: &Path, path: &Path) {
         std::process::exit(1);
     }
 
-    let (msg_queue, incoming_msg): (Sender<QueueItem>, Receiver<QueueItem>) = mpsc::channel();
-
     let (tx, rx) = mpsc::channel();
     let mut watcher = watcher(tx, Duration::from_secs(1)).unwrap();
-    let tx = msg_queue.clone();
+    let tx = msg_queue;
     thread::spawn(move || {
         while let Ok(x) = rx.recv() {
             tx.send(QueueItem::FileMsg(x)).unwrap();
@@ -62,20 +66,16 @@ pub fn start_client(config_file: &Path, path: &Path) {
         .watch(&watch_path, notify::RecursiveMode::Recursive)
         .unwrap();
 
-    let tx = msg_queue;
-    thread::spawn(move || {
-        let mut stream = listen_stream;
-        debug!("Listening for messages on tcp stram");
-        while let Ok(msg) = net::recv(&mut stream) {
-            debug!("TCP MESSAGE: {:?}", msg);
-            tx.send(QueueItem::ServerMsg(msg)).unwrap();
-        }
-    });
+    client.request_file_list().unwrap();
 
     loop {
         if let Ok(msg) = incoming_msg.recv() {
             match msg {
-                QueueItem::ServerMsg(push) => println!("Server message: {:?}", push),
+                QueueItem::ServerMsg(push) => {
+                    // TODO: decrypt this message using noise
+                    let msg = MessageBuilder::decode_message(&push).unwrap();
+                    handle_server_event(&watch_path, *msg);
+                }
                 QueueItem::FileMsg(event) => {
                     handle_fs_event(&mut client, &watch_path.canonicalize().unwrap(), event)
                 }
@@ -84,13 +84,48 @@ pub fn start_client(config_file: &Path, path: &Path) {
     }
 }
 
+fn handle_server_event(watch_path: &Path, event: Message) {
+    debug!("Server message: {:?}", event);
+    let verb = event.verb.clone();
+    match verb {
+        messaging::Directive::SendFiles => {
+            let files = file_operations::generate_file_list(watch_path).unwrap();
+            let mut local_files: HashSet<FileId> = HashSet::new();
+            for file in files.0 {
+                debug!("Found File: {:?}", file.path);
+                local_files.insert(file);
+            }
+
+            let mut server_files: HashSet<FileId> = HashSet::new();
+
+            if let Some(argument) = event.argument {
+                let files = argument.as_any().downcast_ref::<FileList>().unwrap();
+
+                for file in &files.0 {
+                    server_files.insert(file.clone());
+                }
+            }
+
+            for file in local_files.difference(&server_files) {
+                debug!("File not on server: {:?}", file.path);
+            }
+        }
+        messaging::Directive::RequestFile => todo!(),
+        messaging::Directive::RequestChunk => todo!(),
+        messaging::Directive::SendFile => todo!(),
+        messaging::Directive::SendChunk => todo!(),
+        messaging::Directive::DeleteFile => todo!(),
+        _ => {}
+    };
+}
+
 fn handle_fs_event(client: &mut Client, watch_path: &Path, event: DebouncedEvent) {
     match event {
         DebouncedEvent::Rename(_, p)
         | DebouncedEvent::Create(p)
         | DebouncedEvent::Write(p)
         | DebouncedEvent::Chmod(p) => {
-            match client.send_file_info(&watch_path, &p) {
+            match client.send_file_info(watch_path, &p) {
                 Ok(chunks) => {
                     info!("Successfully sent the file");
                     client.send_chunks(&p, chunks).unwrap();

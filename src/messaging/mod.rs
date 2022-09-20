@@ -64,6 +64,7 @@ use arguments::{Argument, Version};
 pub enum Directive {
     AnnounceVersion,
     ListFiles,
+    SendFiles,
     RequestFile,
     RequestChunk,
     SendFile,
@@ -81,12 +82,13 @@ impl TryFrom<u16> for Directive {
         match num {
             0 => Ok(Directive::AnnounceVersion),
             1 => Ok(Directive::ListFiles),
-            2 => Ok(Directive::RequestFile),
-            3 => Ok(Directive::RequestChunk),
-            4 => Ok(Directive::SendFile),
-            5 => Ok(Directive::SendChunk),
-            6 => Ok(Directive::DeleteFile),
-            7 => Ok(Directive::Response),
+            2 => Ok(Directive::SendFiles),
+            3 => Ok(Directive::RequestFile),
+            4 => Ok(Directive::RequestChunk),
+            5 => Ok(Directive::SendFile),
+            6 => Ok(Directive::SendChunk),
+            7 => Ok(Directive::DeleteFile),
+            8 => Ok(Directive::Response),
             _ => Err("Failed to convert Directive"),
         }
     }
@@ -199,6 +201,7 @@ impl MessageBuilder {
             arg = match msg.verb {
                 Directive::AnnounceVersion => Some(Box::new(arguments::Version::from_bin(&x)?)),
                 Directive::ListFiles => None,
+                Directive::SendFiles => Some(Box::new(arguments::FileList::from_bin(&x)?)),
                 Directive::RequestFile => Some(Box::new(arguments::FileId::from_bin(&x)?)),
                 Directive::RequestChunk => Some(Box::new(arguments::ChunkId::from_bin(&x)?)),
                 Directive::SendFile => Some(Box::new(arguments::FileMetadata::from_bin(&x)?)),

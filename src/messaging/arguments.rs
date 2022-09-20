@@ -10,7 +10,7 @@ use std::{
     io,
     os::unix::prelude::PermissionsExt,
     path::PathBuf,
-    time, vec,
+    time, vec, hash::Hash,
 };
 
 #[derive(Debug, PartialEq, Eq)]
@@ -40,10 +40,19 @@ impl Argument for Version {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Hash)]
 pub struct FileId {
     pub path: PathBuf,
     pub hash: [u8; 32],
+}
+
+impl Clone for FileId {
+    fn clone(&self) -> Self {
+        Self {
+            path: self.path.clone(),
+            hash: self.hash,
+        }
+    }
 }
 
 impl FileId {
@@ -247,6 +256,49 @@ impl Argument for FileMetadata {
 }
 
 #[derive(Debug, PartialEq, Eq)]
+pub struct FileList(pub Vec<FileId>);
+
+impl Argument for FileList {
+    fn to_bin(&self) -> Vec<u8> {
+        let mut files: Vec<u8> = vec![];
+
+        for file in &self.0 {
+            let data = &file.to_bin();
+            files.extend_from_slice(&(data.len() as u16).to_be_bytes());
+            files.extend_from_slice(data);
+        }
+
+        files
+    }
+
+    fn from_bin(data: &[u8]) -> Result<Self, Error> {
+        let mut buf = [0u8; 2];
+        let mut cur = 0;
+        let mut files: Vec<FileId> = vec![];
+
+        while cur < data.len() {
+            buf.copy_from_slice(&data[cur..cur + 2]);
+            cur += 2;
+            let size = u16::from_be_bytes(buf);
+
+            if data[cur..].len() < size.into() {
+                return Err(Error(
+                    "Invalid FileList format. Failed to convert from binary.".to_owned(),
+                ));
+            }
+
+            files.push(FileId::from_bin(&data[cur..(size+2).into()])?);
+            cur += size as usize;
+        }
+        Ok(FileList(files))
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+}
+
+#[derive(Debug, PartialEq, Eq)]
 pub struct Chunk {
     pub id: ChunkId,
     pub data: Vec<u8>,
@@ -289,6 +341,26 @@ impl Argument for ResponseCode {
 
     fn as_any(&self) -> &dyn Any {
         self
+    }
+}
+
+#[derive(Debug)]
+pub struct Dummy {}
+
+impl Argument for Dummy {
+    fn to_bin(&self) -> Vec<u8> {
+        todo!()
+    }
+
+    fn from_bin(data: &[u8]) -> Result<Self, Error>
+    where
+        Self: Sized,
+    {
+        todo!()
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        todo!()
     }
 }
 
@@ -339,5 +411,10 @@ mod tests {
             ChunkId::from_bin(&[72, 101, 108, 108, 111, 32, 119, 111, 114, 108, 100]).unwrap(),
             ChunkId(b"Hello world".to_vec())
         );
+    }
+
+    #[test]
+    fn test_argument_filelist() {
+        todo!()
     }
 }
