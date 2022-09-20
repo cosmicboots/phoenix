@@ -1,6 +1,7 @@
 use base64ct::{Base64, Encoding};
 use notify::{watcher, DebouncedEvent, Watcher};
 use std::{
+    collections::HashSet,
     fs,
     net::TcpStream,
     path::{Path, PathBuf},
@@ -15,7 +16,11 @@ use file_operations::Client;
 
 use crate::{
     config::{ClientConfig, Config},
-    messaging::{self, MessageBuilder},
+    messaging::{
+        self,
+        arguments::{FileId, FileList},
+        Message, MessageBuilder,
+    },
     net::{NetClient, NoiseConnection},
 };
 
@@ -61,12 +66,6 @@ pub fn start_client(config_file: &Path, path: &Path) {
         .watch(&watch_path, notify::RecursiveMode::Recursive)
         .unwrap();
 
-    // TODO: Handle this information in the future
-    let files = file_operations::generate_file_list(&watch_path).unwrap();
-    for file in files.0 {
-        debug!("Found File: {:?}", file.path);
-    }
-
     client.request_file_list().unwrap();
 
     loop {
@@ -74,8 +73,8 @@ pub fn start_client(config_file: &Path, path: &Path) {
             match msg {
                 QueueItem::ServerMsg(push) => {
                     // TODO: decrypt this message using noise
-                    let msg = MessageBuilder::decode_message(dbg!(&push));
-                    println!("Server message: {:?}", msg);
+                    let msg = MessageBuilder::decode_message(&push).unwrap();
+                    handle_server_event(&watch_path, *msg);
                 }
                 QueueItem::FileMsg(event) => {
                     handle_fs_event(&mut client, &watch_path.canonicalize().unwrap(), event)
@@ -83,6 +82,41 @@ pub fn start_client(config_file: &Path, path: &Path) {
             }
         }
     }
+}
+
+fn handle_server_event(watch_path: &Path, event: Message) {
+    debug!("Server message: {:?}", event);
+    let verb = event.verb.clone();
+    match verb {
+        messaging::Directive::SendFiles => {
+            let files = file_operations::generate_file_list(watch_path).unwrap();
+            let mut local_files: HashSet<FileId> = HashSet::new();
+            for file in files.0 {
+                debug!("Found File: {:?}", file.path);
+                local_files.insert(file);
+            }
+
+            let mut server_files: HashSet<FileId> = HashSet::new();
+
+            if let Some(argument) = event.argument {
+                let files = argument.as_any().downcast_ref::<FileList>().unwrap();
+
+                for file in &files.0 {
+                    server_files.insert(file.clone());
+                }
+            }
+
+            for file in local_files.difference(&server_files) {
+                debug!("File not on server: {:?}", file.path);
+            }
+        }
+        messaging::Directive::RequestFile => todo!(),
+        messaging::Directive::RequestChunk => todo!(),
+        messaging::Directive::SendFile => todo!(),
+        messaging::Directive::SendChunk => todo!(),
+        messaging::Directive::DeleteFile => todo!(),
+        _ => {}
+    };
 }
 
 fn handle_fs_event(client: &mut Client, watch_path: &Path, event: DebouncedEvent) {

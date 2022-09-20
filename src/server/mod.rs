@@ -74,7 +74,7 @@ pub fn start_server(config_file: &Path) {
                         let files = db.get_files().unwrap();
                         debug!("Sending: {:?}", files);
                         let msg = msg_builder.encode_message(Directive::SendFiles, Some(files));
-                        let _ = &svc.send(dbg!(&msg));
+                        let _ = &svc.send(&msg);
                     }
                     _ => todo!(),
                 }

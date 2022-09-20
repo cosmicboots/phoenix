@@ -35,7 +35,11 @@ pub struct Client {
 }
 
 impl Client {
-    pub fn new(builder: MessageBuilder, net_client: NetClient, msg_queue: Sender<QueueItem>) -> Self {
+    pub fn new(
+        builder: MessageBuilder,
+        net_client: NetClient,
+        msg_queue: Sender<QueueItem>,
+    ) -> Self {
         let net_client = Arc::new(Mutex::new(net_client));
 
         let (tx, rx): (Sender<Vec<u8>>, Receiver<Vec<u8>>) = mpsc::channel();
@@ -128,13 +132,11 @@ fn chunk_file(path: &Path) -> Result<Vec<[u8; 32]>, io::Error> {
 
     file.seek(SeekFrom::Start(0))?;
 
-    for i in 0..(size as f32 / CHUNK_SIZE as f32).ceil() as usize {
-        debug!("Chunk: {}", i);
+    for _ in 0..(size as f32 / CHUNK_SIZE as f32).ceil() as usize {
         let mut buf = vec![0; CHUNK_SIZE];
         let len = file.read(&mut buf)?;
         hasher.update(&buf[..len]);
         chunks.push(hasher.finalize_reset().into());
-        debug!("{:?}", chunks);
     }
 
     Ok(chunks)
@@ -152,19 +154,21 @@ pub fn get_file_info(path: &Path) -> Result<FileMetadata, std::io::Error> {
 ///
 /// This will be used to preform an initial synchronization when the clients connect.
 pub fn generate_file_list(path: &Path) -> Result<FileList, std::io::Error> {
-    Ok(FileList(recursive_file_list(path)?))
+    Ok(FileList(recursive_file_list(path, path)?))
 }
 
-fn recursive_file_list(path: &Path) -> Result<Vec<FileId>, std::io::Error> {
+fn recursive_file_list(base: &Path, path: &Path) -> Result<Vec<FileId>, std::io::Error> {
     let mut files: Vec<FileId> = vec![];
 
     for entry in fs::read_dir(path)? {
         let entry = entry?;
         let path = entry.path();
         if path.is_dir() {
-            files.append(&mut recursive_file_list(&path)?);
+            files.append(&mut recursive_file_list(base, &path)?);
         } else {
-            files.push(get_file_info(&path)?.file_id);
+            let mut file_info = get_file_info(&path)?.file_id;
+            file_info.path = file_info.path.strip_prefix(base).unwrap().to_owned();
+            files.push(file_info);
         }
     }
     Ok(files)

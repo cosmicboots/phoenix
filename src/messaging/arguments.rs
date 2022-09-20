@@ -10,7 +10,7 @@ use std::{
     io,
     os::unix::prelude::PermissionsExt,
     path::PathBuf,
-    time, vec,
+    time, vec, hash::Hash,
 };
 
 #[derive(Debug, PartialEq, Eq)]
@@ -40,10 +40,19 @@ impl Argument for Version {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Hash)]
 pub struct FileId {
     pub path: PathBuf,
     pub hash: [u8; 32],
+}
+
+impl Clone for FileId {
+    fn clone(&self) -> Self {
+        Self {
+            path: self.path.clone(),
+            hash: self.hash,
+        }
+    }
 }
 
 impl FileId {
