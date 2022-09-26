@@ -10,7 +10,7 @@ use sled::{
 };
 use std::{collections::HashSet, fmt::Write, path::Path, vec};
 
-use crate::messaging::arguments::{Chunk, ChunkId, FileMetadata, FileId, FileList};
+use crate::messaging::arguments::{Chunk, ChunkId, FileId, FileList, FileMetadata};
 
 /// Static name of the file_table
 static FILE_TABLE: &str = "file_table";
@@ -86,13 +86,13 @@ impl Db {
             Err(_) => panic!("Couldn't serialize file to store in database"),
         };
         // TODO: Improve error handling
-        let chunks: Vec<ChunkId> = (&self.file_table, &self.chunk_count, &self.chunk_table)
+        let chunks: Vec<ChunkId> = (&self.pending_table, &self.chunk_count, &self.chunk_table)
             .transaction(
-                |(ft , cc, ct): &(TransactionalTree, TransactionalTree, TransactionalTree)| -> ConflictableTransactionResult<Vec<ChunkId>, sled::Error> {
+                |(pt, cc, ct): &(TransactionalTree, TransactionalTree, TransactionalTree)| -> ConflictableTransactionResult<Vec<ChunkId>, sled::Error> {
                     let mut insert_chunks = file.chunks.clone();
 
                     // Prevent duplicate entries with the same data
-                    if let Some(x) = ft.get(&file.file_id.path.to_str().unwrap().as_bytes())? {
+                    if let Some(x) = pt.get(&file.file_id.path.to_str().unwrap().as_bytes())? {
                         let old_file = bincode::deserialize::<FileMetadata>(&x).unwrap();
                         if old_file == *file {
                             // The file is the same as the old
@@ -110,7 +110,6 @@ impl Db {
 
                             for chunk in chunks_to_remove {
                                 let count = rc_merge(cc.get(&*chunk.0)?, -1);
-
 
                                 if let Some(x) = count {
                                     cc.insert(&*chunk.0, &*x)?;
@@ -131,7 +130,7 @@ impl Db {
                     }
 
                     // Add the file metadata to the file table
-                    ft.insert(file.file_id.path.to_str().unwrap().as_bytes(), &*value).unwrap();
+                    pt.insert(file.file_id.path.to_str().unwrap().as_bytes(), &*value).unwrap();
                     // Add all the chunks into the chunk count table
                     for chunk in &insert_chunks {
                         // TODO: this probably should be done with a merge operation
