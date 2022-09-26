@@ -14,6 +14,8 @@ use crate::messaging::arguments::{Chunk, ChunkId, FileMetadata, FileId, FileList
 
 /// Static name of the file_table
 static FILE_TABLE: &str = "file_table";
+/// Static name of the pending_table
+static PENDING_TABLE: &str = "pending table";
 /// Static name of the chunk_table
 static CHUNK_TABLE: &str = "chunk_table";
 /// Static name of the chunk_count table
@@ -31,6 +33,8 @@ pub struct Db {
     /// This will be used to determine when it's safe to remove a chunk from the database (in the
     /// case where multiple files reference the same chunk)
     chunk_count: Tree,
+    /// Table to store partial file transfers while they're still in progress
+    pending_table: Tree,
 }
 
 impl Db {
@@ -45,10 +49,12 @@ impl Db {
         let file_table = db.open_tree(FILE_TABLE)?;
         let chunk_table = db.open_tree(CHUNK_TABLE)?;
         let chunk_count = db.open_tree(CHUNK_COUNT)?;
+        let pending_table = db.open_tree(PENDING_TABLE)?;
         Ok(Db {
             file_table,
             chunk_table,
             chunk_count,
+            pending_table,
         })
     }
 
@@ -58,6 +64,7 @@ impl Db {
             file_table: db.open_tree(FILE_TABLE)?,
             chunk_table: db.open_tree(CHUNK_TABLE)?,
             chunk_count: db.open_tree(CHUNK_COUNT)?,
+            pending_table: db.open_tree(PENDING_TABLE)?,
         })
     }
 
