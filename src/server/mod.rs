@@ -51,7 +51,7 @@ pub fn start_server(config_file: &Path) {
                 println!("{:?}", msg);
                 match msg.verb {
                     Directive::SendFile => {
-                        db.add_file(
+                        let chunks = db.add_file(
                             msg.argument
                                 .unwrap()
                                 .as_any()
@@ -59,6 +59,13 @@ pub fn start_server(config_file: &Path) {
                                 .unwrap(),
                         )
                         .expect("Failed to add file to database");
+
+                        debug!("Server needs these chunks: {:?}", chunks);
+
+                        for chunk in chunks {
+                           let msg = msg_builder.encode_message(Directive::RequestChunk, Some(chunk));
+                           let _ = &svc.send(&msg);
+                        }
                     }
                     Directive::SendChunk => {
                         db.add_chunk(
