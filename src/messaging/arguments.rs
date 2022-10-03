@@ -122,8 +122,8 @@ impl Argument for ChunkId {
 ///
 /// This contains the chunk Id along with an associated file
 pub struct QualifiedChunkId {
-    path: FileId,
-    id: ChunkId,
+    pub path: FileId,
+    pub id: ChunkId,
 }
 
 impl Argument for QualifiedChunkId {
@@ -150,7 +150,7 @@ impl Argument for QualifiedChunkId {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct FileMetadata {
     pub file_id: FileId,
     pub file_name: String,

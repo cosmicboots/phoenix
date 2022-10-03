@@ -5,7 +5,7 @@ use base64ct::{Base64, Encoding};
 use db::Db;
 
 use crate::messaging::{
-    arguments::{Chunk, FileMetadata},
+    arguments::{Chunk, FileMetadata, QualifiedChunkId},
     Directive,
 };
 
@@ -51,20 +51,23 @@ pub fn start_server(config_file: &Path) {
                 println!("{:?}", msg);
                 match msg.verb {
                     Directive::SendFile => {
-                        let chunks = db.add_file(
-                            msg.argument
-                                .unwrap()
-                                .as_any()
-                                .downcast_ref::<FileMetadata>()
-                                .unwrap(),
-                        )
-                        .expect("Failed to add file to database");
+                        let argument = &msg.argument.unwrap();
+                        let metadata = argument.as_any().downcast_ref::<FileMetadata>().unwrap();
+                        //let file_id = metadata.file_id.clone();
+                        let chunks = db
+                            .add_file(&metadata)
+                            .expect("Failed to add file to database");
 
                         debug!("Server needs these chunks: {:?}", chunks);
 
                         for chunk in chunks {
-                           let msg = msg_builder.encode_message(Directive::RequestChunk, Some(chunk));
-                           let _ = &svc.send(&msg);
+                            let qualified_chunk = QualifiedChunkId {
+                                path: metadata.file_id.clone(),
+                                id: chunk,
+                            };
+                            let msg =
+                                msg_builder.encode_message(Directive::RequestChunk, Some(qualified_chunk));
+                            let _ = &svc.send(&msg);
                         }
                     }
                     Directive::SendChunk => {
