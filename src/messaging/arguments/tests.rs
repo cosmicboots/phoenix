@@ -48,6 +48,33 @@ fn test_argument_chunkid() {
 }
 
 #[test]
-fn test_argument_filelist() {
-    todo!()
+fn test_qualified_chunkid() {
+    let chunk_id = QualifiedChunkId {
+        path: FileId {
+            path: PathBuf::from("dir/file"),
+            hash: [0u8; 32],
+        },
+        id: ChunkId([1u8; 32].to_vec()),
+    };
+
+    assert_eq!(
+        chunk_id.to_bin(),
+        vec![
+            0u8, 0u8, 0u8, 40u8, 100u8, 105u8, 114u8, 47u8, 102u8, 105u8, 108u8, 101u8, 0u8, 0u8,
+            0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8,
+            0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 1u8, 1u8, 1u8, 1u8,
+            1u8, 1u8, 1u8, 1u8, 1u8, 1u8, 1u8, 1u8, 1u8, 1u8, 1u8, 1u8, 1u8, 1u8, 1u8, 1u8, 1u8,
+            1u8, 1u8, 1u8, 1u8, 1u8, 1u8, 1u8, 1u8, 1u8, 1u8, 1u8
+        ]
+    );
+
+    let raw_chunk_id = vec![
+        0u8, 0u8, 0u8, 40u8, 100u8, 105u8, 114u8, 47u8, 102u8, 105u8, 108u8, 101u8, 0u8, 0u8, 0u8,
+        0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8,
+        0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 1u8, 1u8, 1u8, 1u8, 1u8, 1u8, 1u8,
+        1u8, 1u8, 1u8, 1u8, 1u8, 1u8, 1u8, 1u8, 1u8, 1u8, 1u8, 1u8, 1u8, 1u8, 1u8, 1u8, 1u8, 1u8,
+        1u8, 1u8, 1u8, 1u8, 1u8, 1u8, 1u8,
+    ];
+
+    assert_eq!(QualifiedChunkId::from_bin(&raw_chunk_id).unwrap(), chunk_id);
 }

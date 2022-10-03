@@ -10,10 +10,11 @@ use std::{
     any::Any,
     fmt::{Display, Write},
     fs::{File, Metadata},
+    hash::Hash,
     io,
     os::unix::prelude::PermissionsExt,
     path::PathBuf,
-    time, vec, hash::Hash,
+    time, vec,
 };
 
 #[derive(Debug, PartialEq, Eq)]
@@ -109,6 +110,39 @@ impl Argument for ChunkId {
 
     fn from_bin(data: &[u8]) -> Result<Self, Error> {
         Ok(Self(data.to_vec()))
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, PartialEq, Eq)]
+/// A fully qualified `ChunkId`.
+///
+/// This contains the chunk Id along with an associated file
+pub struct QualifiedChunkId {
+    path: FileId,
+    id: ChunkId,
+}
+
+impl Argument for QualifiedChunkId {
+    fn to_bin(&self) -> Vec<u8> {
+        let mut buf: Vec<u8> = vec![];
+        let path_bytes = self.path.to_bin();
+        buf.extend_from_slice(&(path_bytes.len() as u32).to_be_bytes());
+        buf.extend_from_slice(&path_bytes);
+        buf.extend_from_slice(&self.id.to_bin());
+        buf
+    }
+
+    fn from_bin(data: &[u8]) -> Result<Self, Error> {
+        let mut buf = [0u8; 4];
+        buf.copy_from_slice(&data[..4]);
+        let str_size: usize = u32::from_be_bytes(buf) as usize;
+        let path = FileId::from_bin(&data[4..4 + str_size])?;
+        let id = ChunkId::from_bin(&data[4 + str_size..])?;
+        Ok(QualifiedChunkId { path, id })
     }
 
     fn as_any(&self) -> &dyn Any {
@@ -290,7 +324,7 @@ impl Argument for FileList {
                 ));
             }
 
-            files.push(FileId::from_bin(&data[cur..(size+2).into()])?);
+            files.push(FileId::from_bin(&data[cur..(size + 2).into()])?);
             cur += size as usize;
         }
         Ok(FileList(files))
