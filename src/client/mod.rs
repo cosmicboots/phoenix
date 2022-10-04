@@ -18,7 +18,7 @@ use crate::{
     config::{ClientConfig, Config},
     messaging::{
         self,
-        arguments::{FileId, FileList, ChunkId},
+        arguments::{ChunkId, FileId, FileList, QualifiedChunkId},
         Message, MessageBuilder,
     },
     net::{NetClient, NoiseConnection},
@@ -84,7 +84,7 @@ pub fn start_client(config_file: &Path, path: &Path) {
     }
 }
 
-fn handle_server_event(client: &mut Client, watch_path: &Path, event: Message) {
+fn handle_server_event(_client: &mut Client, watch_path: &Path, event: Message) {
     debug!("Server message: {:?}", event);
     let verb = event.verb.clone();
     match verb {
@@ -113,9 +113,12 @@ fn handle_server_event(client: &mut Client, watch_path: &Path, event: Message) {
         messaging::Directive::RequestFile => todo!(),
         messaging::Directive::RequestChunk => {
             if let Some(argument) = event.argument {
-                let chunk_id = argument.as_any().downcast_ref::<ChunkId>().unwrap();
+                let _chunk_id = argument
+                    .as_any()
+                    .downcast_ref::<QualifiedChunkId>()
+                    .unwrap();
             }
-        },
+        }
         messaging::Directive::SendFile => todo!(),
         messaging::Directive::SendChunk => todo!(),
         messaging::Directive::DeleteFile => todo!(),

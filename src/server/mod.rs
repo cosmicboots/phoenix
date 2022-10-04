@@ -55,7 +55,7 @@ pub fn start_server(config_file: &Path) {
                         let metadata = argument.as_any().downcast_ref::<FileMetadata>().unwrap();
                         //let file_id = metadata.file_id.clone();
                         let chunks = db
-                            .add_file(&metadata)
+                            .add_file(metadata)
                             .expect("Failed to add file to database");
 
                         debug!("Server needs these chunks: {:?}", chunks);
