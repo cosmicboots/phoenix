@@ -8,7 +8,7 @@ use sled::{
     transaction::{ConflictableTransactionResult, TransactionalTree},
     IVec, Transactional, Tree,
 };
-use std::{collections::HashSet, fmt::Write, path::Path};
+use std::{collections::HashSet, fmt::Write, path::Path, vec};
 
 use crate::messaging::arguments::{Chunk, ChunkId, FileMetadata, FileId, FileList};
 
@@ -73,15 +73,15 @@ impl Db {
     ///
     /// The new chunks are then inserted into the database, and the chunks no longer used are
     /// removed.
-    pub fn add_file(&self, file: &FileMetadata) -> sled::Result<()> {
+    pub fn add_file(&self, file: &FileMetadata) -> sled::Result<Vec<ChunkId>> {
         let value = match bincode::serialize(&file) {
             Ok(x) => x,
             Err(_) => panic!("Couldn't serialize file to store in database"),
         };
         // TODO: Improve error handling
-        (&self.file_table, &self.chunk_count, &self.chunk_table)
+        let chunks: Vec<ChunkId> = (&self.file_table, &self.chunk_count, &self.chunk_table)
             .transaction(
-                |(ft , cc, ct): &(TransactionalTree, TransactionalTree, TransactionalTree)| -> ConflictableTransactionResult<(), sled::Error> {
+                |(ft , cc, ct): &(TransactionalTree, TransactionalTree, TransactionalTree)| -> ConflictableTransactionResult<Vec<ChunkId>, sled::Error> {
                     let mut insert_chunks = file.chunks.clone();
 
                     // Prevent duplicate entries with the same data
@@ -90,7 +90,7 @@ impl Db {
                         if old_file == *file {
                             // The file is the same as the old
                             warn!("Duplicate file attempted to add to the file store");
-                            return Ok(());
+                            return Ok(vec![]);
                         } else {
                             let mut old_chunks = HashSet::new();
                             old_file.chunks.iter().for_each(|x| {old_chunks.insert(x);});
@@ -126,17 +126,17 @@ impl Db {
                     // Add the file metadata to the file table
                     ft.insert(file.file_id.path.to_str().unwrap().as_bytes(), &*value).unwrap();
                     // Add all the chunks into the chunk count table
-                    for chunk in insert_chunks {
+                    for chunk in &insert_chunks {
                         // TODO: this probably should be done with a merge operation
                         if let Some(x) = rc_merge(cc.get(&chunk.0)?, 1) {
                             cc.insert(&*chunk.0, x)?;
                         };
                     }
-                    Ok(())
+                    Ok(insert_chunks)
                 },
             )
             .unwrap();
-        Ok(())
+        Ok(chunks)
     }
 
     /// Returns a [File](struct.File.html) from the database when given a file_hash.

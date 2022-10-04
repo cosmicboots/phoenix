@@ -18,7 +18,7 @@ use crate::{
     config::{ClientConfig, Config},
     messaging::{
         self,
-        arguments::{FileId, FileList},
+        arguments::{ChunkId, FileId, FileList, QualifiedChunkId},
         Message, MessageBuilder,
     },
     net::{NetClient, NoiseConnection},
@@ -74,7 +74,7 @@ pub fn start_client(config_file: &Path, path: &Path) {
                 QueueItem::ServerMsg(push) => {
                     // TODO: decrypt this message using noise
                     let msg = MessageBuilder::decode_message(&push).unwrap();
-                    handle_server_event(&watch_path, *msg);
+                    handle_server_event(&mut client, &watch_path, *msg);
                 }
                 QueueItem::FileMsg(event) => {
                     handle_fs_event(&mut client, &watch_path.canonicalize().unwrap(), event)
@@ -84,7 +84,7 @@ pub fn start_client(config_file: &Path, path: &Path) {
     }
 }
 
-fn handle_server_event(watch_path: &Path, event: Message) {
+fn handle_server_event(_client: &mut Client, watch_path: &Path, event: Message) {
     debug!("Server message: {:?}", event);
     let verb = event.verb.clone();
     match verb {
@@ -111,7 +111,18 @@ fn handle_server_event(watch_path: &Path, event: Message) {
             }
         }
         messaging::Directive::RequestFile => todo!(),
-        messaging::Directive::RequestChunk => todo!(),
+        messaging::Directive::RequestChunk => {
+            if let Some(argument) = event.argument {
+                let chunk: &QualifiedChunkId = argument
+                    .as_any()
+                    .downcast_ref::<QualifiedChunkId>()
+                    .unwrap();
+                let path = watch_path.join(chunk.path.path.clone());
+                _client
+                    .send_chunk(&chunk.id, &path)
+                    .expect("Failed to queue chunk");
+            }
+        }
         messaging::Directive::SendFile => todo!(),
         messaging::Directive::SendChunk => todo!(),
         messaging::Directive::DeleteFile => todo!(),

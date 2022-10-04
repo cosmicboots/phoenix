@@ -112,6 +112,46 @@ impl Client {
         Ok(())
     }
 
+    /// Send a specific chunk from a given file
+    pub fn send_chunk(
+        &mut self,
+        chunk_id: &ChunkId,
+        file_path: &Path,
+    ) -> Result<(), Box<dyn Error>> {
+        let file_info = get_file_info(&file_path)?;
+        let mut file = File::open(&file_path)?;
+        let mut hasher = Sha256::new();
+
+        let chunk_index = file_info
+            .chunks
+            .iter()
+            .position(|i| *i == *chunk_id)
+            .expect("Attempted to get a chunk from a file that's changed");
+
+        file.seek(SeekFrom::Start((chunk_index * CHUNK_SIZE) as u64))?;
+
+        let mut buf = vec![0; CHUNK_SIZE];
+        let len = file.read(&mut buf)?;
+
+        hasher.update(&buf[..len]);
+        let hash = hasher.finalize().to_vec();
+
+        if chunk_id.to_bin() == hash {
+            let chunk = arguments::Chunk {
+                id: arguments::ChunkId(hash),
+                data: buf[..len].to_vec(),
+            };
+            let msg = self
+                .builder
+                .encode_message(Directive::SendChunk, Some(chunk));
+            self.msg_queue_tx.send(msg)?;
+        } else {
+            panic!("Chunks don't match up. File must have changed. This error will be handled in the future")
+        }
+
+        Ok(())
+    }
+
     pub fn request_file_list(&mut self) -> Result<(), Box<dyn Error>> {
         let msg = self
             .builder

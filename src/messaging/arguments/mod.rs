@@ -1,4 +1,7 @@
 // Directive specific abstractions for parsing the byte array argument data
+
+mod tests;
+
 use base64ct::{Base64, Encoding};
 use core::fmt::Debug;
 use serde::{Deserialize, Serialize};
@@ -7,10 +10,11 @@ use std::{
     any::Any,
     fmt::{Display, Write},
     fs::{File, Metadata},
+    hash::Hash,
     io,
     os::unix::prelude::PermissionsExt,
     path::PathBuf,
-    time, vec, hash::Hash,
+    time, vec,
 };
 
 #[derive(Debug, PartialEq, Eq)]
@@ -113,7 +117,40 @@ impl Argument for ChunkId {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, PartialEq, Eq)]
+/// A fully qualified `ChunkId`.
+///
+/// This contains the chunk Id along with an associated file
+pub struct QualifiedChunkId {
+    pub path: FileId,
+    pub id: ChunkId,
+}
+
+impl Argument for QualifiedChunkId {
+    fn to_bin(&self) -> Vec<u8> {
+        let mut buf: Vec<u8> = vec![];
+        let path_bytes = self.path.to_bin();
+        buf.extend_from_slice(&(path_bytes.len() as u32).to_be_bytes());
+        buf.extend_from_slice(&path_bytes);
+        buf.extend_from_slice(&self.id.to_bin());
+        buf
+    }
+
+    fn from_bin(data: &[u8]) -> Result<Self, Error> {
+        let mut buf = [0u8; 4];
+        buf.copy_from_slice(&data[..4]);
+        let str_size: usize = u32::from_be_bytes(buf) as usize;
+        let path = FileId::from_bin(&data[4..4 + str_size])?;
+        let id = ChunkId::from_bin(&data[4 + str_size..])?;
+        Ok(QualifiedChunkId { path, id })
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct FileMetadata {
     pub file_id: FileId,
     pub file_name: String,
@@ -287,7 +324,7 @@ impl Argument for FileList {
                 ));
             }
 
-            files.push(FileId::from_bin(&data[cur..(size+2).into()])?);
+            files.push(FileId::from_bin(&data[cur..(size + 2).into()])?);
             cur += size as usize;
         }
         Ok(FileList(files))
@@ -360,61 +397,6 @@ impl Argument for Dummy {
     }
 
     fn as_any(&self) -> &dyn Any {
-        todo!()
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use sha2::{Digest, Sha256};
-
-    use super::*;
-
-    #[test]
-    fn test_argument_version() {
-        assert_eq!(Version(1).to_bin(), vec![1u8]);
-        assert_eq!(Version::from_bin(&[1u8]).unwrap(), Version(1));
-    }
-
-    #[test]
-    fn test_argument_fileid() {
-        let mut h = Sha256::new();
-        let mut a = vec![112, 97, 116, 104, 47, 116, 111, 47, 102, 105, 108, 101];
-        h.update(b"Hello world");
-        let mut b = [0u8; 32];
-        b.copy_from_slice(&h.finalize());
-        a.extend_from_slice(&b);
-        assert_eq!(
-            FileId {
-                path: PathBuf::from("path/to/file"),
-                hash: b
-            }
-            .to_bin(),
-            a
-        );
-        assert_eq!(
-            FileId::from_bin(&a).unwrap(),
-            FileId {
-                path: PathBuf::from("path/to/file"),
-                hash: b
-            }
-        );
-    }
-
-    #[test]
-    fn test_argument_chunkid() {
-        assert_eq!(
-            ChunkId(b"Hello world".to_vec()).to_bin(),
-            vec![72, 101, 108, 108, 111, 32, 119, 111, 114, 108, 100]
-        );
-        assert_eq!(
-            ChunkId::from_bin(&[72, 101, 108, 108, 111, 32, 119, 111, 114, 108, 100]).unwrap(),
-            ChunkId(b"Hello world".to_vec())
-        );
-    }
-
-    #[test]
-    fn test_argument_filelist() {
         todo!()
     }
 }

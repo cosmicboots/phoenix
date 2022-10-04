@@ -203,7 +203,9 @@ impl MessageBuilder {
                 Directive::ListFiles => None,
                 Directive::SendFiles => Some(Box::new(arguments::FileList::from_bin(&x)?)),
                 Directive::RequestFile => Some(Box::new(arguments::FileId::from_bin(&x)?)),
-                Directive::RequestChunk => Some(Box::new(arguments::ChunkId::from_bin(&x)?)),
+                Directive::RequestChunk => {
+                    Some(Box::new(arguments::QualifiedChunkId::from_bin(&x)?))
+                }
                 Directive::SendFile => Some(Box::new(arguments::FileMetadata::from_bin(&x)?)),
                 Directive::SendChunk => Some(Box::new(arguments::Chunk::from_bin(&x)?)),
                 Directive::DeleteFile => Some(Box::new(arguments::FileId::from_bin(&x)?)),
