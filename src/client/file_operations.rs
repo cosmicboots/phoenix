@@ -115,16 +115,17 @@ impl Client {
     /// Send a specific chunk from a given file
     pub fn send_chunk(
         &mut self,
-        chunk_id: ChunkId,
-        file_info: FileMetadata,
+        chunk_id: &ChunkId,
+        file_path: &Path,
     ) -> Result<(), Box<dyn Error>> {
-        let mut file = File::open(file_info.file_id.path)?;
+        let file_info = get_file_info(&file_path)?;
+        let mut file = File::open(&file_path)?;
         let mut hasher = Sha256::new();
 
         let chunk_index = file_info
             .chunks
             .iter()
-            .position(|i| *i == chunk_id)
+            .position(|i| *i == *chunk_id)
             .expect("Attempted to get a chunk from a file that's changed");
 
         file.seek(SeekFrom::Start((chunk_index * CHUNK_SIZE) as u64))?;

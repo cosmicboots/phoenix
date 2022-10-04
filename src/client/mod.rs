@@ -113,10 +113,14 @@ fn handle_server_event(_client: &mut Client, watch_path: &Path, event: Message) 
         messaging::Directive::RequestFile => todo!(),
         messaging::Directive::RequestChunk => {
             if let Some(argument) = event.argument {
-                let _chunk_id = argument
+                let chunk: &QualifiedChunkId = argument
                     .as_any()
                     .downcast_ref::<QualifiedChunkId>()
                     .unwrap();
+                let path = watch_path.join(chunk.path.path.clone());
+                _client
+                    .send_chunk(&chunk.id, &path)
+                    .expect("Failed to queue chunk");
             }
         }
         messaging::Directive::SendFile => todo!(),
