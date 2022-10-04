@@ -236,7 +236,7 @@ mod tests {
             verb: Directive::SendFile,
             data: Some(vec![1, 2, 3]),
         };
-        assert_eq!(Vec::from(msg), vec!(0, 0, 0, 4, 1, 2, 3),);
+        assert_eq!(Vec::from(msg), vec!(0, 0, 0, 5, 1, 2, 3),);
         msg = RawMessage {
             id: 1,
             verb: Directive::ListFiles,
