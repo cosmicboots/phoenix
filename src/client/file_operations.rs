@@ -74,15 +74,14 @@ impl Client {
         &mut self,
         base: &Path,
         path: &Path,
-    ) -> Result<Vec<ChunkId>, Box<dyn Error>> {
+    ) -> Result<(), Box<dyn Error>> {
         let mut file_info = get_file_info(path)?;
         file_info.file_id.path = path.strip_prefix(base).unwrap().to_owned();
-        let chunks = file_info.chunks.clone();
         let msg = self
             .builder
             .encode_message(Directive::SendFile, Some(file_info));
         self.msg_queue_tx.send(msg)?;
-        Ok(chunks)
+        Ok(())
     }
 
     pub fn send_chunks(&mut self, path: &Path, chunks: Vec<ChunkId>) -> Result<(), Box<dyn Error>> {

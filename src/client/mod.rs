@@ -137,9 +137,8 @@ fn handle_fs_event(client: &mut Client, watch_path: &Path, event: DebouncedEvent
         | DebouncedEvent::Write(p)
         | DebouncedEvent::Chmod(p) => {
             match client.send_file_info(watch_path, &p) {
-                Ok(chunks) => {
+                Ok(_) => {
                     info!("Successfully sent the file");
-                    client.send_chunks(&p, chunks).unwrap();
                 }
                 Err(e) => error!("{:?}", e),
             };
