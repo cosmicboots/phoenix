@@ -142,6 +142,34 @@ impl Db {
                 },
             )
             .unwrap();
+
+        // Check for chunks that should be inserted
+        let chnks = chunks.clone();
+        let ct = self.chunk_table.clone();
+        let pt = self.pending_table.clone();
+        let ft = self.file_table.clone();
+        let file_id = file.file_id.path.clone();
+        let thrd = std::thread::Builder::new().name(format!("db_watcher_{}", &file.file_name));
+        thrd.spawn(move || {
+            for chunk in chnks {
+                if let Ok(None) = ct.get(&chunk.0) {
+                    let watch = ct.watch_prefix(chunk.0);
+                    // Wait till the chunk is added
+                    // TODO: This might have to check the event type in the future
+                    let _ = watch.take(1);
+                }
+            }
+            (&ft, &pt).transaction(
+                |(ft, pt): &(TransactionalTree, TransactionalTree)| -> ConflictableTransactionResult<(), sled::Error> {
+                    let key = file_id.to_str().unwrap().as_bytes();
+                    let file = pt.get(key).unwrap().unwrap();
+                    pt.remove(key).unwrap();
+                    ft.insert(key, file).unwrap();
+                    Ok(())
+                }
+                ).unwrap();
+        }).unwrap();
+
         Ok(chunks)
     }
 
