@@ -18,7 +18,7 @@ use crate::{
     config::{ClientConfig, Config},
     messaging::{
         self,
-        arguments::{ChunkId, FileId, FileList, QualifiedChunkId},
+        arguments::{FileId, FileList, QualifiedChunkId},
         Message, MessageBuilder,
     },
     net::{NetClient, NoiseConnection},

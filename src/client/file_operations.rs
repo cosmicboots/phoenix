@@ -70,11 +70,7 @@ impl Client {
     }
 
     /// Send file metadata to the server
-    pub fn send_file_info(
-        &mut self,
-        base: &Path,
-        path: &Path,
-    ) -> Result<(), Box<dyn Error>> {
+    pub fn send_file_info(&mut self, base: &Path, path: &Path) -> Result<(), Box<dyn Error>> {
         let mut file_info = get_file_info(path)?;
         file_info.file_id.path = path.strip_prefix(base).unwrap().to_owned();
         let msg = self
@@ -84,40 +80,13 @@ impl Client {
         Ok(())
     }
 
-    pub fn send_chunks(&mut self, path: &Path, chunks: Vec<ChunkId>) -> Result<(), Box<dyn Error>> {
-        let mut file = File::open(path)?;
-        let mut hasher = Sha256::new();
-
-        file.seek(SeekFrom::Start(0))?;
-
-        for id in chunks.iter() {
-            let mut buf = vec![0; CHUNK_SIZE];
-            let len = file.read(&mut buf)?;
-            hasher.update(&buf[..len]);
-            let hash: Vec<u8> = hasher.finalize_reset().to_vec();
-            if id.to_bin() == hash {
-                let chunk = arguments::Chunk {
-                    id: arguments::ChunkId(hash),
-                    data: buf[..len].to_vec(),
-                };
-                let msg = self
-                    .builder
-                    .encode_message(Directive::SendChunk, Some(chunk));
-                self.msg_queue_tx.send(msg)?;
-            } else {
-                panic!("Chunks don't match up. File must have changed. This error will be handled in the future")
-            }
-        }
-        Ok(())
-    }
-
     /// Send a specific chunk from a given file
     pub fn send_chunk(
         &mut self,
         chunk_id: &ChunkId,
         file_path: &Path,
     ) -> Result<(), Box<dyn Error>> {
-        let file_info = get_file_info(&file_path)?;
+        let file_info = get_file_info(file_path)?;
         let mut file = File::open(&file_path)?;
         let mut hasher = Sha256::new();
 
