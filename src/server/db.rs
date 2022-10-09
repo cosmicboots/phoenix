@@ -275,6 +275,15 @@ impl Db {
 
     /// Dump the current database to stdout
     pub fn dump_tree(&self) {
+        let mut table = self.pending_table.iter();
+        println!("\n=== Printing pending_table ===");
+        while let Some(Ok((key, value))) = table.next() {
+            println!(
+                "Key: {:?}\n{}",
+                String::from_utf8(key.to_vec()).unwrap(),
+                bincode::deserialize::<FileMetadata>(&value).unwrap()
+            );
+        }
         let mut table = self.file_table.iter();
         println!("\n=== Printing file_table ===");
         while let Some(Ok((key, value))) = table.next() {
