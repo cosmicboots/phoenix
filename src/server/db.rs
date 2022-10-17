@@ -290,6 +290,15 @@ impl Db {
                 bincode::deserialize::<FileMetadata>(&value).unwrap()
             );
         }
+        let mut table = self.missing_chunks.iter();
+        println!("\n=== Printing missing_chunks ===");
+        while let Some(Ok((key, value))) = table.next() {
+            println!(
+                "ChunkId: {}\n - File: {:?}",
+                Base64::encode_string(&key),
+                String::from_utf8(value.to_vec()).unwrap()
+            );
+        }
         let mut table = self.file_table.iter();
         println!("\n=== Printing file_table ===");
         while let Some(Ok((key, value))) = table.next() {
