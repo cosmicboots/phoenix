@@ -93,9 +93,20 @@ impl Db {
             Err(_) => panic!("Couldn't serialize file to store in database"),
         };
         // TODO: Improve error handling
-        let chunks: Vec<ChunkId> = (&self.pending_table, &self.chunk_count, &self.chunk_table)
+        let chunks: Vec<ChunkId> = (
+            &self.pending_table,
+            &self.chunk_count,
+            &self.chunk_table,
+            &self.missing_chunks,
+        )
             .transaction(
-                |(pt, cc, ct): &(TransactionalTree, TransactionalTree, TransactionalTree)| -> ConflictableTransactionResult<Vec<ChunkId>, sled::Error> {
+                |(pt, cc, ct, mc): &(
+                    TransactionalTree,
+                    TransactionalTree,
+                    TransactionalTree,
+                    TransactionalTree,
+                )|
+                 -> ConflictableTransactionResult<Vec<ChunkId>, sled::Error> {
                     let mut insert_chunks = file.chunks.clone();
 
                     // Prevent duplicate entries with the same data
@@ -107,10 +118,14 @@ impl Db {
                             return Ok(vec![]);
                         } else {
                             let mut old_chunks = HashSet::new();
-                            old_file.chunks.iter().for_each(|x| {old_chunks.insert(x);});
+                            old_file.chunks.iter().for_each(|x| {
+                                old_chunks.insert(x);
+                            });
 
                             let mut new_chunks = HashSet::new();
-                            file.chunks.iter().for_each(|x| {new_chunks.insert(x);});
+                            file.chunks.iter().for_each(|x| {
+                                new_chunks.insert(x);
+                            });
 
                             let chunks_to_remove = old_chunks.difference(&new_chunks);
                             let chunks_to_add = new_chunks.difference(&old_chunks);
@@ -131,51 +146,29 @@ impl Db {
 
                             insert_chunks = vec![];
                             for chunk in chunks_to_add {
-                                insert_chunks.push((*chunk).clone());
+                                if let None = ct.get(&chunk.0)? {
+                                    insert_chunks.push((*chunk).clone());
+                                    mc.insert(
+                                        &*chunk.0,
+                                        file.file_id.path.to_str().unwrap().as_bytes(),
+                                    )?;
+                                }
+                                // Add all the chunks into the chunk count table
+                                // TODO: this probably should be done with a merge operation
+                                if let Some(x) = rc_merge(cc.get(&chunk.0)?, 1) {
+                                    cc.insert(&*chunk.0, x)?;
+                                };
                             }
                         }
                     }
 
                     // Add the file metadata to the file table
-                    pt.insert(file.file_id.path.to_str().unwrap().as_bytes(), &*value).unwrap();
-                    // Add all the chunks into the chunk count table
-                    for chunk in &insert_chunks {
-                        // TODO: this probably should be done with a merge operation
-                        if let Some(x) = rc_merge(cc.get(&chunk.0)?, 1) {
-                            cc.insert(&*chunk.0, x)?;
-                        };
-                    }
+                    pt.insert(file.file_id.path.to_str().unwrap().as_bytes(), &*value)
+                        .unwrap();
                     Ok(insert_chunks)
                 },
             )
             .unwrap();
-
-        // Check for chunks that should be inserted
-        let chnks = chunks.clone();
-        let ct = self.chunk_table.clone();
-        let pt = self.pending_table.clone();
-        let ft = self.file_table.clone();
-        let file_id = file.file_id.path.clone();
-        let thrd = std::thread::Builder::new().name(format!("db_watcher_{}", &file.file_name));
-        thrd.spawn(move || {
-            for chunk in chnks {
-                if let Ok(None) = ct.get(&chunk.0) {
-                    let watch = ct.watch_prefix(chunk.0);
-                    // Wait till the chunk is added
-                    // TODO: This might have to check the event type in the future
-                    let _ = watch.take(1);
-                }
-            }
-            (&ft, &pt).transaction(
-                |(ft, pt): &(TransactionalTree, TransactionalTree)| -> ConflictableTransactionResult<(), sled::Error> {
-                    let key = file_id.to_str().unwrap().as_bytes();
-                    let file = pt.get(key).unwrap().unwrap();
-                    pt.remove(key).unwrap();
-                    ft.insert(key, file).unwrap();
-                    Ok(())
-                }
-                ).unwrap();
-        }).unwrap();
 
         Ok(chunks)
     }
