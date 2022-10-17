@@ -108,6 +108,7 @@ impl Db {
                 )|
                  -> ConflictableTransactionResult<Vec<ChunkId>, sled::Error> {
                     let mut insert_chunks = file.chunks.clone();
+                    let mut new_chunks = vec![];
 
                     // Prevent duplicate entries with the same data
                     if let Some(x) = pt.get(&file.file_id.path.to_str().unwrap().as_bytes())? {
@@ -145,27 +146,32 @@ impl Db {
                             }
 
                             insert_chunks = vec![];
+                            debug!("chunks_to_add: {:?}", chunks_to_add);
                             for chunk in chunks_to_add {
-                                if let None = ct.get(&chunk.0)? {
-                                    insert_chunks.push((*chunk).clone());
-                                    mc.insert(
-                                        &*chunk.0,
-                                        file.file_id.path.to_str().unwrap().as_bytes(),
-                                    )?;
-                                }
-                                // Add all the chunks into the chunk count table
-                                // TODO: this probably should be done with a merge operation
-                                if let Some(x) = rc_merge(cc.get(&chunk.0)?, 1) {
-                                    cc.insert(&*chunk.0, x)?;
-                                };
+                                insert_chunks.push((*chunk).clone());
                             }
                         }
+                    }
+
+                    // Add all the chunks into the chunk count table
+                    for chunk in insert_chunks {
+                        // TODO: this probably should be done with a merge operation
+                        if let Some(x) = rc_merge(cc.get(&chunk.0)?, 1) {
+                            cc.insert(&*chunk.0, x)?;
+                            if let None = ct.get(&chunk.0)? {
+                                new_chunks.push(chunk.clone());
+                                mc.insert(
+                                    &*chunk.0,
+                                    file.file_id.path.to_str().unwrap().as_bytes(),
+                                )?;
+                            }
+                        };
                     }
 
                     // Add the file metadata to the file table
                     pt.insert(file.file_id.path.to_str().unwrap().as_bytes(), &*value)
                         .unwrap();
-                    Ok(insert_chunks)
+                    Ok(new_chunks)
                 },
             )
             .unwrap();
