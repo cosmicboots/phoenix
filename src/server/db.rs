@@ -20,6 +20,8 @@ static PENDING_TABLE: &str = "pending table";
 static CHUNK_TABLE: &str = "chunk_table";
 /// Static name of the chunk_count table
 static CHUNK_COUNT: &str = "chunk_count";
+/// Static name of the missing_chunks table
+static MISSING_CHUNKS: &str = "missing_chunks";
 
 #[derive(Debug)]
 /// The main database stucture to store back-end data.
@@ -35,6 +37,8 @@ pub struct Db {
     chunk_count: Tree,
     /// Table to store partial file transfers while they're still in progress
     pending_table: Tree,
+    /// Table to store chunks that the database doesn't have yet
+    missing_chunks: Tree,
 }
 
 impl Db {
@@ -50,11 +54,13 @@ impl Db {
         let chunk_table = db.open_tree(CHUNK_TABLE)?;
         let chunk_count = db.open_tree(CHUNK_COUNT)?;
         let pending_table = db.open_tree(PENDING_TABLE)?;
+        let missing_chunks = db.open_tree(MISSING_CHUNKS)?;
         Ok(Db {
             file_table,
             chunk_table,
             chunk_count,
             pending_table,
+            missing_chunks,
         })
     }
 
@@ -65,6 +71,7 @@ impl Db {
             chunk_table: db.open_tree(CHUNK_TABLE)?,
             chunk_count: db.open_tree(CHUNK_COUNT)?,
             pending_table: db.open_tree(PENDING_TABLE)?,
+            missing_chunks: db.open_tree(MISSING_CHUNKS)?,
         })
     }
 
