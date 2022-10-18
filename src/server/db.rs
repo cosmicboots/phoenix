@@ -113,13 +113,14 @@ impl Db {
                     let mut new_chunks = vec![];
 
                     // Prevent duplicate entries with the same data
-                    if let Some(x) = pt.get(&file.file_id.path.to_str().unwrap().as_bytes())? {
+                    if let Some(x) = ft.get(&file.file_id.path.to_str().unwrap().as_bytes())? {
                         let old_file = bincode::deserialize::<FileMetadata>(&x).unwrap();
                         if old_file == *file {
                             // The file is the same as the old
                             warn!("Duplicate file attempted to add to the file store");
                             return Ok(vec![]);
                         } else {
+                            debug!("Updating file: {:?}", file.file_id.path);
                             let mut old_chunks = HashSet::new();
                             old_file.chunks.iter().for_each(|x| {
                                 old_chunks.insert(x);
@@ -148,7 +149,6 @@ impl Db {
                             }
 
                             insert_chunks = vec![];
-                            debug!("chunks_to_add: {:?}", chunks_to_add);
                             for chunk in chunks_to_add {
                                 insert_chunks.push((*chunk).clone());
                             }
@@ -168,7 +168,6 @@ impl Db {
                                 None => vec![],
                             };
                             ref_files.push(file.file_id.path.display().to_string());
-                            debug!("Files that refer to chunk: {:?}", ref_files);
                             mc.insert(&*chunk.0, bincode::serialize(&ref_files).unwrap())?;
                         }
                     }
@@ -233,20 +232,18 @@ impl Db {
                         // TODO: Cleanup Partially transferred files
                         let files = bincode::deserialize::<Vec<String>>(&x).unwrap();
                         for file in files {
-                            debug!("Checking if {} is complete", file);
                             if let Some(raw_file) = pt.get(&file)? {
                                 let file_md: FileMetadata =
                                     bincode::deserialize::<FileMetadata>(&raw_file).unwrap();
                                 let mut file_complete = true;
                                 for chunk in file_md.chunks {
-                                    debug!("checking chunk: {:?}", Base64::encode_string(&chunk.0));
                                     if let Some(_) = mc.get(&chunk.0)? {
                                         file_complete = false;
                                         break;
                                     }
                                 }
                                 if file_complete {
-                                    debug!("File completed transfer: {}", file);
+                                    debug!("File completed transfer: {:?}", file);
                                     ft.insert(file.as_bytes(), &pt.remove(&*file)?.unwrap())?;
                                 }
                             }

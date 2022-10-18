@@ -85,14 +85,12 @@ pub fn start_client(config_file: &Path, path: &Path) {
 }
 
 fn handle_server_event(_client: &mut Client, watch_path: &Path, event: Message) {
-    debug!("Server message: {:?}", event);
     let verb = event.verb.clone();
     match verb {
         messaging::Directive::SendFiles => {
             let files = file_operations::generate_file_list(watch_path).unwrap();
             let mut local_files: HashSet<FileId> = HashSet::new();
             for file in files.0 {
-                debug!("Found File: {:?}", file.path);
                 local_files.insert(file);
             }
 
@@ -107,7 +105,7 @@ fn handle_server_event(_client: &mut Client, watch_path: &Path, event: Message) 
             }
 
             for file in local_files.difference(&server_files) {
-                debug!("File not on server: {:?}", file.path);
+                debug!("File not found on server: {:?}", file.path);
             }
         }
         messaging::Directive::RequestFile => todo!(),

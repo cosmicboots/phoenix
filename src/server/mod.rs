@@ -57,8 +57,6 @@ pub fn start_server(config_file: &Path) {
                             .add_file(metadata)
                             .expect("Failed to add file to database");
 
-                        debug!("Server needs these chunks: {:?}", chunks);
-
                         for chunk in chunks {
                             let qualified_chunk = QualifiedChunkId {
                                 path: metadata.file_id.clone(),
@@ -81,7 +79,7 @@ pub fn start_server(config_file: &Path) {
                     }
                     Directive::ListFiles => {
                         let files = db.get_files().unwrap();
-                        debug!("Sending: {:?}", files);
+                        debug!("Sending file list to client");
                         let msg = msg_builder.encode_message(Directive::SendFiles, Some(files));
                         let _ = &svc.send(&msg);
                     }
