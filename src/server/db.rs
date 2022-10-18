@@ -94,13 +94,15 @@ impl Db {
         };
         // TODO: Improve error handling
         let chunks: Vec<ChunkId> = (
+            &self.file_table,
             &self.pending_table,
             &self.chunk_count,
             &self.chunk_table,
             &self.missing_chunks,
         )
             .transaction(
-                |(pt, cc, ct, mc): &(
+                |(ft, pt, cc, ct, mc): &(
+                    TransactionalTree,
                     TransactionalTree,
                     TransactionalTree,
                     TransactionalTree,
@@ -158,19 +160,27 @@ impl Db {
                         // TODO: this probably should be done with a merge operation
                         if let Some(x) = rc_merge(cc.get(&chunk.0)?, 1) {
                             cc.insert(&*chunk.0, x)?;
-                            if let None = ct.get(&chunk.0)? {
-                                new_chunks.push(chunk.clone());
-                                mc.insert(
-                                    &*chunk.0,
-                                    file.file_id.path.to_str().unwrap().as_bytes(),
-                                )?;
-                            }
                         };
+                        if let None = ct.get(&chunk.0)? {
+                            new_chunks.push(chunk.clone());
+                            let mut ref_files: Vec<String> = match mc.get(&*chunk.0)? {
+                                Some(x) => bincode::deserialize::<Vec<String>>(&x).unwrap(),
+                                None => vec![],
+                            };
+                            ref_files.push(file.file_id.path.display().to_string());
+                            debug!("Files that refer to chunk: {:?}", ref_files);
+                            mc.insert(&*chunk.0, bincode::serialize(&ref_files).unwrap())?;
+                        }
                     }
 
                     // Add the file metadata to the file table
-                    pt.insert(file.file_id.path.to_str().unwrap().as_bytes(), &*value)
-                        .unwrap();
+                    if new_chunks.is_empty() {
+                        ft.insert(file.file_id.path.to_str().unwrap().as_bytes(), &*value)
+                            .unwrap();
+                    } else {
+                        pt.insert(file.file_id.path.to_str().unwrap().as_bytes(), &*value)
+                            .unwrap();
+                    }
                     Ok(new_chunks)
                 },
             )
@@ -200,14 +210,47 @@ impl Db {
     /// database, which would be expensive to clean up.
     pub fn add_chunk(&self, chunk: &Chunk) -> sled::Result<()> {
         //self.chunk_table.insert(&*chunk.hash, &*chunk.data)?;
-        (&self.chunk_table, &self.chunk_count)
+        (
+            &self.chunk_table,
+            &self.missing_chunks,
+            &self.pending_table,
+            &self.file_table,
+        )
             .transaction(
-                |(ct, cc)| -> ConflictableTransactionResult<(), sled::Error> {
-                    // Check to see if the chunk is referenced (via the chunk_count table) to make
+                |(ct, mc, pt, ft): &(
+                    TransactionalTree,
+                    TransactionalTree,
+                    TransactionalTree,
+                    TransactionalTree,
+                )|
+                 -> ConflictableTransactionResult<(), sled::Error> {
+                    // Check to see if the chunk is missing (via the missing_chunks table) to make
                     // sure orphaned chunks are never added into the database. This should prevent
                     // the need of expensive database clean up operations
-                    if let Ok(Some(_)) = cc.get(&chunk.id.0) {
+                    if let Some(x) = mc.get(&chunk.id.0)? {
                         ct.insert(chunk.id.0.to_vec(), chunk.data.to_owned())?;
+                        mc.remove(chunk.id.0.to_vec())?;
+                        // TODO: Cleanup Partially transferred files
+                        let files = bincode::deserialize::<Vec<String>>(&x).unwrap();
+                        for file in files {
+                            debug!("Checking if {} is complete", file);
+                            if let Some(raw_file) = pt.get(&file)? {
+                                let file_md: FileMetadata =
+                                    bincode::deserialize::<FileMetadata>(&raw_file).unwrap();
+                                let mut file_complete = true;
+                                for chunk in file_md.chunks {
+                                    debug!("checking chunk: {:?}", Base64::encode_string(&chunk.0));
+                                    if let Some(_) = mc.get(&chunk.0)? {
+                                        file_complete = false;
+                                        break;
+                                    }
+                                }
+                                if file_complete {
+                                    debug!("File completed transfer: {}", file);
+                                    ft.insert(file.as_bytes(), &pt.remove(&*file)?.unwrap())?;
+                                }
+                            }
+                        }
                     }
                     Ok(())
                 },
@@ -296,7 +339,7 @@ impl Db {
             println!(
                 "ChunkId: {}\n - File: {:?}",
                 Base64::encode_string(&key),
-                String::from_utf8(value.to_vec()).unwrap()
+                bincode::deserialize::<Vec<String>>(&value).unwrap()
             );
         }
         let mut table = self.file_table.iter();

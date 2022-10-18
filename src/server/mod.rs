@@ -48,7 +48,6 @@ pub fn start_server(config_file: &Path) {
                 let mut msg_builder = MessageBuilder::new(1);
                 let msg = MessageBuilder::decode_message(raw_msg).unwrap();
                 msg_builder.increment_counter();
-                println!("{:?}", msg);
                 match msg.verb {
                     Directive::SendFile => {
                         let argument = &msg.argument.unwrap();
