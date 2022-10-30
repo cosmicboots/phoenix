@@ -189,8 +189,8 @@ impl Db {
     }
 
     /// Returns a [File](struct.File.html) from the database when given a file_hash.
-    pub fn get_file(&self, file_hash: &str) -> sled::Result<FileMetadata> {
-        match self.file_table.get(file_hash) {
+    pub fn get_file(&self, file: &str) -> sled::Result<FileMetadata> {
+        match self.file_table.get(file) {
             Ok(x) => match x {
                 Some(value) => Ok(
                     bincode::deserialize::<FileMetadata>(&value).expect("Failed to deserialize")

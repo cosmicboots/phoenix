@@ -5,7 +5,7 @@ use base64ct::{Base64, Encoding};
 use db::Db;
 
 use crate::messaging::{
-    arguments::{Chunk, FileMetadata, QualifiedChunkId},
+    arguments::{Chunk, FileMetadata, QualifiedChunkId, FileId},
     Directive,
 };
 
@@ -81,6 +81,13 @@ pub fn start_server(config_file: &Path) {
                         let files = db.get_files().unwrap();
                         debug!("Sending file list to client");
                         let msg = msg_builder.encode_message(Directive::SendFiles, Some(files));
+                        let _ = &svc.send(&msg);
+                    }
+                    Directive::RequestFile => {
+                        let argument = &msg.argument.unwrap();
+                        let file_id = argument.as_any().downcast_ref::<FileId>().unwrap();
+                        let file = db.get_file(&file_id.path.to_str().unwrap()).unwrap();
+                        let msg = msg_builder.encode_message(Directive::SendFile, Some(file));
                         let _ = &svc.send(&msg);
                     }
                     _ => todo!(),
