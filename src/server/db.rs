@@ -439,20 +439,28 @@ mod tests {
         db.add_file(&file);
     }
 
-    //#[test]
-    fn test_file_db() {
+    #[test]
+    fn test_get_file() {
         run_test(|db| {
             let db = db.lock().unwrap();
-            let f = FileMetadata {
-                file_id: todo!(),
-                file_name: todo!(),
-                permissions: todo!(),
-                modified: todo!(),
-                created: todo!(),
-                chunks: todo!(),
+            let file = FileMetadata {
+                file_id: FileId {
+                    path: PathBuf::from("TestFile"),
+                    hash: [0u8; 32],
+                },
+                file_name: "TestFile".to_owned(),
+                permissions: 0b110110000,
+                modified: time::SystemTime::now()
+                    .duration_since(time::UNIX_EPOCH)
+                    .unwrap()
+                    .as_millis(),
+                created: time::SystemTime::now()
+                    .duration_since(time::UNIX_EPOCH)
+                    .unwrap()
+                    .as_millis(),
+                chunks: vec![],
             };
-            db.add_file(&f).unwrap();
-            assert_eq!(f, db.get_file("ABCDEF1234567890").unwrap())
+            assert_eq!(file, db.get_file("TestFile").unwrap())
         })
     }
 
