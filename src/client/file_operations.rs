@@ -4,7 +4,7 @@ use std::{
     io::{self, Read, Seek, SeekFrom},
     path::Path,
     sync::{
-        mpsc::{self, Receiver, Sender},
+        mpsc::{self, Receiver, Sender, SendError},
         Arc, Mutex,
     },
     thread,
@@ -126,6 +126,11 @@ impl Client {
             .encode_message::<arguments::Dummy>(Directive::ListFiles, None);
         self.msg_queue_tx.send(msg)?;
         Ok(())
+    }
+
+    pub fn request_file(&mut self, file: FileId) -> Result<(), SendError<Vec<u8>>>  {
+        let msg = self.builder.encode_message(Directive::RequestFile, Some(file));
+        self.msg_queue_tx.send(msg)
     }
 }
 

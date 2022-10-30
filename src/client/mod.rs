@@ -84,7 +84,7 @@ pub fn start_client(config_file: &Path, path: &Path) {
     }
 }
 
-fn handle_server_event(_client: &mut Client, watch_path: &Path, event: Message) {
+fn handle_server_event(client: &mut Client, watch_path: &Path, event: Message) {
     let verb = event.verb.clone();
     match verb {
         messaging::Directive::SendFiles => {
@@ -107,6 +107,10 @@ fn handle_server_event(_client: &mut Client, watch_path: &Path, event: Message) 
             for file in local_files.difference(&server_files) {
                 debug!("File not found on server: {:?}", file.path);
             }
+            for file in server_files.difference(&local_files) {
+                debug!("File not found locally: {:?}", file.path);
+                let _ = client.request_file(file.clone());
+            }
         }
         messaging::Directive::RequestFile => todo!(),
         messaging::Directive::RequestChunk => {
@@ -116,7 +120,7 @@ fn handle_server_event(_client: &mut Client, watch_path: &Path, event: Message) 
                     .downcast_ref::<QualifiedChunkId>()
                     .unwrap();
                 let path = watch_path.join(chunk.path.path.clone());
-                _client
+                client
                     .send_chunk(&chunk.id, &path)
                     .expect("Failed to queue chunk");
             }
