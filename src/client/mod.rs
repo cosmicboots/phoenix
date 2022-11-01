@@ -2,7 +2,8 @@ use base64ct::{Base64, Encoding};
 use notify::{watcher, DebouncedEvent, Watcher};
 use std::{
     collections::HashSet,
-    fs,
+    fs::{self, File},
+    io::Write,
     net::TcpStream,
     path::{Path, PathBuf},
     sync::mpsc::{self, Receiver, Sender},
@@ -18,7 +19,7 @@ use crate::{
     config::{ClientConfig, Config},
     messaging::{
         self,
-        arguments::{FileId, FileList, QualifiedChunkId},
+        arguments::{FileId, FileList, FileMetadata, QualifiedChunkId},
         Message, MessageBuilder,
     },
     net::{NetClient, NoiseConnection},
@@ -125,7 +126,16 @@ fn handle_server_event(client: &mut Client, watch_path: &Path, event: Message) {
                     .expect("Failed to queue chunk");
             }
         }
-        messaging::Directive::SendFile => todo!(),
+        messaging::Directive::SendFile => {
+            if let Some(argument) = event.argument {
+                let file_md = argument.as_any().downcast_ref::<FileMetadata>().unwrap();
+                // TODO: this will cause the file metadata to be resent to the server as the file
+                // is written to
+                let mut file = File::create(watch_path.join(&file_md.file_id.path)).unwrap();
+                let _ = file.write_all(format!("{:?}", file_md.chunks).as_bytes());
+                info!("Wrote file to {:?}", &file_md.file_id.path);
+            }
+        }
         messaging::Directive::SendChunk => todo!(),
         messaging::Directive::DeleteFile => todo!(),
         _ => {}
