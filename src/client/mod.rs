@@ -6,7 +6,10 @@ use std::{
     io::Write,
     net::TcpStream,
     path::{Path, PathBuf},
-    sync::mpsc::{self, Receiver, Sender},
+    sync::{
+        mpsc::{self, Receiver, Sender},
+        Arc, Mutex,
+    },
     thread,
     time::Duration,
 };
@@ -70,23 +73,34 @@ pub fn start_client(config_file: &Path, path: &Path) {
 
     client.request_file_list().unwrap();
 
+    let blacklist: Arc<Mutex<HashSet<PathBuf>>> = Arc::new(Mutex::new(HashSet::new()));
     loop {
         if let Ok(msg) = incoming_msg.recv() {
             match msg {
                 QueueItem::ServerMsg(push) => {
                     // TODO: decrypt this message using noise
                     let msg = MessageBuilder::decode_message(&push).unwrap();
-                    handle_server_event(&mut client, &watch_path, *msg);
+                    handle_server_event(&mut client, &watch_path, *msg, blacklist.clone());
                 }
                 QueueItem::FileMsg(event) => {
-                    handle_fs_event(&mut client, &watch_path.canonicalize().unwrap(), event)
+                    handle_fs_event(
+                        &mut client,
+                        &watch_path.canonicalize().unwrap(),
+                        event,
+                        blacklist.clone(),
+                    );
                 }
             }
         }
     }
 }
 
-fn handle_server_event(client: &mut Client, watch_path: &Path, event: Message) {
+fn handle_server_event(
+    client: &mut Client,
+    watch_path: &Path,
+    event: Message,
+    blacklist: Arc<Mutex<HashSet<PathBuf>>>,
+) {
     let verb = event.verb.clone();
     match verb {
         messaging::Directive::SendFiles => {
@@ -130,8 +144,14 @@ fn handle_server_event(client: &mut Client, watch_path: &Path, event: Message) {
         messaging::Directive::SendFile => {
             if let Some(argument) = event.argument {
                 let file_md = argument.as_any().downcast_ref::<FileMetadata>().unwrap();
-                // TODO: this will cause the file metadata to be resent to the server as the file
-                // is written to
+                let path = file_md.file_id.path.clone();
+                {
+                    // The blacklist needs to be updated to make sure we dont send file information
+                    // for a in progress transfer
+                    let mut bl = blacklist.lock().unwrap();
+                    bl.insert(path);
+                    debug!("Added file to watcher blacklist. Current list: {:?}", bl);
+                }
                 let mut file = File::create(watch_path.join(&file_md.file_id.path)).unwrap();
                 let _ = file.write_all(format!("{:?}", file_md.chunks).as_bytes());
                 info!("Wrote file to {:?}", &file_md.file_id.path);
@@ -143,18 +163,27 @@ fn handle_server_event(client: &mut Client, watch_path: &Path, event: Message) {
     };
 }
 
-fn handle_fs_event(client: &mut Client, watch_path: &Path, event: DebouncedEvent) {
+fn handle_fs_event(
+    client: &mut Client,
+    watch_path: &Path,
+    event: DebouncedEvent,
+    blacklist: Arc<Mutex<HashSet<PathBuf>>>,
+) {
     match event {
         DebouncedEvent::Rename(_, p)
         | DebouncedEvent::Create(p)
         | DebouncedEvent::Write(p)
         | DebouncedEvent::Chmod(p) => {
-            match client.send_file_info(watch_path, &p) {
-                Ok(_) => {
-                    info!("Successfully sent the file");
-                }
-                Err(e) => error!("{:?}", e),
-            };
+            // Check the blacklist to make sure the event isn't from a partial file transfer
+            let bl = blacklist.lock().unwrap();
+            if !bl.contains(p.strip_prefix(watch_path).unwrap()) {
+                match client.send_file_info(watch_path, &p) {
+                    Ok(_) => {
+                        info!("Successfully sent the file");
+                    }
+                    Err(e) => error!("{:?}", e),
+                };
+            }
         }
         _ => {}
     }
