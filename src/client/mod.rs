@@ -12,6 +12,7 @@ use std::{
 };
 
 mod file_operations;
+mod utils;
 
 use file_operations::Client;
 
@@ -89,7 +90,7 @@ fn handle_server_event(client: &mut Client, watch_path: &Path, event: Message) {
     let verb = event.verb.clone();
     match verb {
         messaging::Directive::SendFiles => {
-            let files = file_operations::generate_file_list(watch_path).unwrap();
+            let files = utils::generate_file_list(watch_path).unwrap();
             let mut local_files: HashSet<FileId> = HashSet::new();
             for file in files.0 {
                 local_files.insert(file);
