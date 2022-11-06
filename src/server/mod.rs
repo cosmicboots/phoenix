@@ -5,7 +5,7 @@ use base64ct::{Base64, Encoding};
 use db::Db;
 
 use crate::messaging::{
-    arguments::{Chunk, ChunkId, FileId, FileMetadata, QualifiedChunkId},
+    arguments::{Chunk, ChunkId, FileId, FileMetadata, QualifiedChunk, QualifiedChunkId},
     Directive,
 };
 
@@ -99,8 +99,14 @@ pub fn start_server(config_file: &Path) {
                         let mut buf = [0u8; 32];
                         buf.copy_from_slice(&chunk_id.id.0);
                         let chunk = db.get_chunk(buf).unwrap();
-                        let msg =
-                            msg_builder.encode_message::<Chunk>(Directive::SendChunk, Some(chunk));
+                        let q_chunk = QualifiedChunk {
+                            id: chunk_id.clone(),
+                            data: chunk.data,
+                        };
+                        let msg = msg_builder.encode_message::<QualifiedChunk>(
+                            Directive::SendQualifiedChunk,
+                            Some(q_chunk),
+                        );
                         let _ = &svc.send(&msg);
                     }
                     _ => todo!(),

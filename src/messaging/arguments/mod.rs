@@ -117,7 +117,7 @@ impl Argument for ChunkId {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Clone)]
 /// A fully qualified `ChunkId`.
 ///
 /// This contains the chunk Id along with an associated file
@@ -362,6 +362,37 @@ impl Argument for Chunk {
     }
 }
 
+#[derive(Debug, PartialEq, Eq)]
+pub struct QualifiedChunk {
+    pub id: QualifiedChunkId,
+    pub data: Vec<u8>,
+}
+
+impl Argument for QualifiedChunk {
+    fn to_bin(&self) -> Vec<u8> {
+        let id = self.id.to_bin();
+        let mut buf: Vec<u8> = (id.len() as u64).to_be_bytes().to_vec();
+        buf.extend_from_slice(&id);
+        buf.extend_from_slice(&self.data);
+        buf
+    }
+
+    fn from_bin(data: &[u8]) -> Result<Self, Error> {
+        let mut buf = [0u8; 8];
+        buf.copy_from_slice(&data[..8]);
+        let len = u64::from_be_bytes(buf) as usize;
+        let chunk_id = QualifiedChunkId::from_bin(&data[8..8 + len]).unwrap();
+        let chunk_data = data[32..].to_vec();
+        Ok(QualifiedChunk {
+            id: chunk_id,
+            data: chunk_data,
+        })
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+}
 #[derive(Debug, PartialEq, Eq)]
 pub struct ResponseCode(u16);
 

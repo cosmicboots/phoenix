@@ -160,7 +160,7 @@ fn handle_server_event(
                 }
             }
         }
-        messaging::Directive::SendChunk => {
+        messaging::Directive::SendQualifiedChunk=> {
             if let Some(argument) = event.argument {
                 debug!("Got a chunk from the server: {:?}", argument);
             }
