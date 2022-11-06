@@ -118,6 +118,12 @@ impl Client {
         Ok(())
     }
 
+    pub fn request_chunk(&mut self, chunk: ChunkId) -> Result<(), SendError<Vec<u8>>> {
+        debug!("Requesting chunk {:?}", chunk);
+        let msg = self.builder.encode_message::<arguments::ChunkId>(Directive::RequestServerChunk, Some(chunk));
+        self.msg_queue_tx.send(msg)
+    }
+
     pub fn request_file_list(&mut self) -> Result<(), Box<dyn Error>> {
         let msg = self
             .builder

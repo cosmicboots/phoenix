@@ -3,7 +3,6 @@ use notify::{watcher, DebouncedEvent, Watcher};
 use std::{
     collections::HashSet,
     fs::{self, File},
-    io::Write,
     net::TcpStream,
     path::{Path, PathBuf},
     sync::{
@@ -152,9 +151,11 @@ fn handle_server_event(
                     bl.insert(path);
                     debug!("Added file to watcher blacklist. Current list: {:?}", bl);
                 }
-                let mut file = File::create(watch_path.join(&file_md.file_id.path)).unwrap();
-                let _ = file.write_all(format!("{:?}", file_md.chunks).as_bytes());
-                info!("Wrote file to {:?}", &file_md.file_id.path);
+                let mut _file = File::create(watch_path.join(&file_md.file_id.path)).unwrap();
+                info!("Started file download: {:?}", &file_md.file_id.path);
+                for chunk in &file_md.chunks {
+                    client.request_chunk(chunk.clone()).unwrap();
+                }
             }
         }
         messaging::Directive::SendChunk => todo!(),
