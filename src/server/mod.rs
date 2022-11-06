@@ -5,7 +5,7 @@ use base64ct::{Base64, Encoding};
 use db::Db;
 
 use crate::messaging::{
-    arguments::{Chunk, FileMetadata, QualifiedChunkId, FileId},
+    arguments::{Chunk, ChunkId, FileId, FileMetadata, QualifiedChunkId},
     Directive,
 };
 
@@ -62,8 +62,8 @@ pub fn start_server(config_file: &Path) {
                                 path: metadata.file_id.clone(),
                                 id: chunk,
                             };
-                            let msg =
-                                msg_builder.encode_message(Directive::RequestChunk, Some(qualified_chunk));
+                            let msg = msg_builder
+                                .encode_message(Directive::RequestChunk, Some(qualified_chunk));
                             let _ = &svc.send(&msg);
                         }
                     }
@@ -84,10 +84,20 @@ pub fn start_server(config_file: &Path) {
                         let _ = &svc.send(&msg);
                     }
                     Directive::RequestFile => {
-                        let argument = &msg.argument.unwrap();
+                        let argument = msg.argument.unwrap();
                         let file_id = argument.as_any().downcast_ref::<FileId>().unwrap();
                         let file = db.get_file(file_id.path.to_str().unwrap()).unwrap();
                         let msg = msg_builder.encode_message(Directive::SendFile, Some(file));
+                        let _ = &svc.send(&msg);
+                    }
+                    Directive::RequestServerChunk => {
+                        let argument = msg.argument.unwrap();
+                        let chunk_id = argument.as_any().downcast_ref::<ChunkId>().unwrap();
+                        let mut buf = [0u8; 32];
+                        buf.copy_from_slice(&chunk_id.0);
+                        let chunk = db.get_chunk(buf).unwrap();
+                        let msg =
+                            msg_builder.encode_message::<Chunk>(Directive::SendChunk, Some(chunk));
                         let _ = &svc.send(&msg);
                     }
                     _ => todo!(),
