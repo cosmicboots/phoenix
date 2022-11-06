@@ -2,7 +2,7 @@ use crate::{
     client::utils::get_file_info,
     client::QueueItem,
     messaging::{
-        arguments::{self, Argument, ChunkId, FileId},
+        arguments::{self, Argument, ChunkId, FileId, QualifiedChunkId},
         Directive, MessageBuilder,
     },
     net::{self, NetClient, NoiseConnection},
@@ -118,9 +118,9 @@ impl Client {
         Ok(())
     }
 
-    pub fn request_chunk(&mut self, chunk: ChunkId) -> Result<(), SendError<Vec<u8>>> {
+    pub fn request_chunk(&mut self, chunk: QualifiedChunkId) -> Result<(), SendError<Vec<u8>>> {
         debug!("Requesting chunk {:?}", chunk);
-        let msg = self.builder.encode_message::<arguments::ChunkId>(Directive::RequestServerChunk, Some(chunk));
+        let msg = self.builder.encode_message::<arguments::QualifiedChunkId>(Directive::RequestChunk, Some(chunk));
         self.msg_queue_tx.send(msg)
     }
 

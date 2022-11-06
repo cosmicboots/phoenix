@@ -12,12 +12,6 @@ use std::{
     thread,
     time::Duration,
 };
-
-mod file_operations;
-mod utils;
-
-use file_operations::Client;
-
 use crate::{
     config::{ClientConfig, Config},
     messaging::{
@@ -27,6 +21,10 @@ use crate::{
     },
     net::{NetClient, NoiseConnection},
 };
+use file_operations::Client;
+
+mod file_operations;
+mod utils;
 
 #[derive(Debug)]
 pub enum QueueItem {
@@ -154,11 +152,19 @@ fn handle_server_event(
                 let mut _file = File::create(watch_path.join(&file_md.file_id.path)).unwrap();
                 info!("Started file download: {:?}", &file_md.file_id.path);
                 for chunk in &file_md.chunks {
-                    client.request_chunk(chunk.clone()).unwrap();
+                    let q_chunk = QualifiedChunkId {
+                        path: file_md.file_id.clone(),
+                        id: chunk.clone(),
+                    };
+                    client.request_chunk(q_chunk).unwrap();
                 }
             }
         }
-        messaging::Directive::SendChunk => todo!(),
+        messaging::Directive::SendChunk => {
+            if let Some(argument) = event.argument {
+                debug!("Got a chunk from the server: {:?}", argument);
+            }
+        }
         messaging::Directive::DeleteFile => todo!(),
         _ => {}
     };

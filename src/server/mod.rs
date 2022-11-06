@@ -90,11 +90,14 @@ pub fn start_server(config_file: &Path) {
                         let msg = msg_builder.encode_message(Directive::SendFile, Some(file));
                         let _ = &svc.send(&msg);
                     }
-                    Directive::RequestServerChunk => {
+                    Directive::RequestChunk => {
                         let argument = msg.argument.unwrap();
-                        let chunk_id = argument.as_any().downcast_ref::<ChunkId>().unwrap();
+                        let chunk_id = argument
+                            .as_any()
+                            .downcast_ref::<QualifiedChunkId>()
+                            .unwrap();
                         let mut buf = [0u8; 32];
-                        buf.copy_from_slice(&chunk_id.0);
+                        buf.copy_from_slice(&chunk_id.id.0);
                         let chunk = db.get_chunk(buf).unwrap();
                         let msg =
                             msg_builder.encode_message::<Chunk>(Directive::SendChunk, Some(chunk));
