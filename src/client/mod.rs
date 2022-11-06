@@ -26,6 +26,8 @@ use std::{
 mod file_operations;
 mod utils;
 
+pub use file_operations::CHUNK_SIZE;
+
 #[derive(Debug)]
 pub enum QueueItem {
     ServerMsg(Vec<u8>),
@@ -151,9 +153,10 @@ fn handle_server_event(
                 }
                 let mut _file = File::create(watch_path.join(&file_md.file_id.path)).unwrap();
                 info!("Started file download: {:?}", &file_md.file_id.path);
-                for chunk in &file_md.chunks {
+                for (i, chunk) in file_md.chunks.iter().enumerate() {
                     let q_chunk = QualifiedChunkId {
                         path: file_md.file_id.clone(),
+                        offset: (i * CHUNK_SIZE) as u32,
                         id: chunk.clone(),
                     };
                     client.request_chunk(q_chunk).unwrap();
@@ -162,7 +165,7 @@ fn handle_server_event(
         }
         messaging::Directive::SendQualifiedChunk => {
             if let Some(argument) = event.argument {
-                utils::write_chunk(argument.as_any().downcast_ref::<QualifiedChunk>().unwrap())
+                utils::write_chunk(&watch_path.canonicalize().unwrap(), argument.as_any().downcast_ref::<QualifiedChunk>().unwrap())
                     .unwrap();
             }
         }

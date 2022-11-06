@@ -4,10 +4,10 @@ use base64ct::{Base64, Encoding};
 
 use db::Db;
 
-use crate::messaging::{
+use crate::{messaging::{
     arguments::{Chunk, FileId, FileMetadata, QualifiedChunk, QualifiedChunkId},
     Directive,
-};
+}, client::CHUNK_SIZE};
 
 use super::{
     config::{Config, ServerConfig},
@@ -57,10 +57,11 @@ pub fn start_server(config_file: &Path) {
                             .add_file(metadata)
                             .expect("Failed to add file to database");
 
-                        for chunk in chunks {
+                        for (i, chunk) in chunks.iter().enumerate() {
                             let qualified_chunk = QualifiedChunkId {
                                 path: metadata.file_id.clone(),
-                                id: chunk,
+                                offset: (i * CHUNK_SIZE) as u32,
+                                id: chunk.clone(),
                             };
                             let msg = msg_builder
                                 .encode_message(Directive::RequestChunk, Some(qualified_chunk));

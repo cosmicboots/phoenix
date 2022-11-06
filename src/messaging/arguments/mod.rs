@@ -1,4 +1,4 @@
-// Directive specific abstractions for parsing the byte array argument data
+//! Directive specific abstractions for parsing the byte array argument data
 
 mod tests;
 
@@ -118,11 +118,16 @@ impl Argument for ChunkId {
 }
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Clone)]
-/// A fully qualified `ChunkId`.
+/// A fully qualified [`ChunkId`](struct.ChunkId.html).
 ///
-/// This contains the chunk Id along with an associated file
+/// This contains the chunk Id along with an associated file in the form of a
+/// [`FileId`](struct.FileId.html).
 pub struct QualifiedChunkId {
     pub path: FileId,
+    /// The offset of the beginning of the chunk's location in the file.
+    ///
+    /// For example: If it's the first chunk in the file, it's offset should be `0`.
+    pub offset: u32,
     pub id: ChunkId,
 }
 
@@ -130,19 +135,30 @@ impl Argument for QualifiedChunkId {
     fn to_bin(&self) -> Vec<u8> {
         let mut buf: Vec<u8> = vec![];
         let path_bytes = self.path.to_bin();
+        // Add path length
         buf.extend_from_slice(&(path_bytes.len() as u32).to_be_bytes());
+        // Add path
         buf.extend_from_slice(&path_bytes);
+        // Add chunk offset
+        buf.extend_from_slice(&self.offset.to_be_bytes());
+        // Add the rest of the ChunkId
         buf.extend_from_slice(&self.id.to_bin());
         buf
     }
 
     fn from_bin(data: &[u8]) -> Result<Self, Error> {
         let mut buf = [0u8; 4];
+        // Get size of path string
         buf.copy_from_slice(&data[..4]);
         let str_size: usize = u32::from_be_bytes(buf) as usize;
+        // Get path
         let path = FileId::from_bin(&data[4..4 + str_size])?;
-        let id = ChunkId::from_bin(&data[4 + str_size..])?;
-        Ok(QualifiedChunkId { path, id })
+        // Get the chunk offset
+        buf.copy_from_slice(&data[4 + str_size..8 + str_size]);
+        let offset = u32::from_be_bytes(buf);
+        // Get the ChunkId
+        let id = ChunkId::from_bin(&data[8 + str_size..])?;
+        Ok(QualifiedChunkId { path, offset, id })
     }
 
     fn as_any(&self) -> &dyn Any {
@@ -382,7 +398,7 @@ impl Argument for QualifiedChunk {
         buf.copy_from_slice(&data[..8]);
         let len = u64::from_be_bytes(buf) as usize;
         let chunk_id = QualifiedChunkId::from_bin(&data[8..8 + len]).unwrap();
-        let chunk_data = data[32..].to_vec();
+        let chunk_data = data[8 + len..].to_vec();
         Ok(QualifiedChunk {
             id: chunk_id,
             data: chunk_data,
