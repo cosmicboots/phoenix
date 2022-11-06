@@ -1,5 +1,5 @@
 use super::file_operations::CHUNK_SIZE;
-use crate::messaging::arguments::{FileId, FileList, FileMetadata};
+use crate::messaging::arguments::{FileId, FileList, FileMetadata, QualifiedChunk};
 use sha2::{Digest, Sha256};
 use std::{
     fs::{self, File},
@@ -26,6 +26,11 @@ fn chunk_file(path: &Path) -> Result<Vec<[u8; 32]>, io::Error> {
     }
 
     Ok(chunks)
+}
+
+/// Write a `QualifiedChunk` to it's specified file
+pub fn write_chunk(chunk: &QualifiedChunk) -> Result<(), std::io::Error> {
+    todo!()
 }
 
 /// Get the file metadata from a file at a given path.

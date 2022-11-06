@@ -119,7 +119,6 @@ impl Client {
     }
 
     pub fn request_chunk(&mut self, chunk: QualifiedChunkId) -> Result<(), SendError<Vec<u8>>> {
-        debug!("Requesting chunk {:?}", chunk);
         let msg = self.builder.encode_message::<arguments::QualifiedChunkId>(Directive::RequestChunk, Some(chunk));
         self.msg_queue_tx.send(msg)
     }

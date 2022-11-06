@@ -1,4 +1,14 @@
+use crate::{
+    config::{ClientConfig, Config},
+    messaging::{
+        self,
+        arguments::{FileId, FileList, FileMetadata, QualifiedChunk, QualifiedChunkId},
+        Message, MessageBuilder,
+    },
+    net::{NetClient, NoiseConnection},
+};
 use base64ct::{Base64, Encoding};
+use file_operations::Client;
 use notify::{watcher, DebouncedEvent, Watcher};
 use std::{
     collections::HashSet,
@@ -12,16 +22,6 @@ use std::{
     thread,
     time::Duration,
 };
-use crate::{
-    config::{ClientConfig, Config},
-    messaging::{
-        self,
-        arguments::{FileId, FileList, FileMetadata, QualifiedChunkId},
-        Message, MessageBuilder,
-    },
-    net::{NetClient, NoiseConnection},
-};
-use file_operations::Client;
 
 mod file_operations;
 mod utils;
@@ -160,9 +160,10 @@ fn handle_server_event(
                 }
             }
         }
-        messaging::Directive::SendQualifiedChunk=> {
+        messaging::Directive::SendQualifiedChunk => {
             if let Some(argument) = event.argument {
-                debug!("Got a chunk from the server: {:?}", argument);
+                utils::write_chunk(argument.as_any().downcast_ref::<QualifiedChunk>().unwrap())
+                    .unwrap();
             }
         }
         messaging::Directive::DeleteFile => todo!(),

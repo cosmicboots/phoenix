@@ -5,7 +5,7 @@ use base64ct::{Base64, Encoding};
 use db::Db;
 
 use crate::messaging::{
-    arguments::{Chunk, ChunkId, FileId, FileMetadata, QualifiedChunk, QualifiedChunkId},
+    arguments::{Chunk, FileId, FileMetadata, QualifiedChunk, QualifiedChunkId},
     Directive,
 };
 
