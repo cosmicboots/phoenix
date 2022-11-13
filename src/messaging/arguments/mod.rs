@@ -5,7 +5,6 @@ mod tests;
 use base64ct::{Base64, Encoding};
 use core::fmt::Debug;
 use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
 use std::{
     any::Any,
     fmt::{Display, Write},
@@ -62,7 +61,7 @@ impl Clone for FileId {
 impl FileId {
     pub fn new(path: PathBuf) -> Result<Self, io::Error> {
         let mut file = File::open(&path)?;
-        let mut hasher = Sha256::new();
+        let mut hasher = blake3::Hasher::new();
         io::copy(&mut file, &mut hasher).unwrap();
         let hash = hasher.finalize();
         Ok(FileId {

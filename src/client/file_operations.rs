@@ -7,7 +7,6 @@ use crate::{
     },
     net::{self, NetClient, NoiseConnection},
 };
-use sha2::{Digest, Sha256};
 use std::{
     error::Error,
     fs::File,
@@ -86,7 +85,7 @@ impl Client {
     ) -> Result<(), Box<dyn Error>> {
         let file_info = get_file_info(file_path)?;
         let mut file = File::open(&file_path)?;
-        let mut hasher = Sha256::new();
+        let mut hasher = blake3::Hasher::new();
 
         let chunk_index = file_info
             .chunks
@@ -100,7 +99,7 @@ impl Client {
         let len = file.read(&mut buf)?;
 
         hasher.update(&buf[..len]);
-        let hash = hasher.finalize().to_vec();
+        let hash = hasher.finalize().as_bytes().to_vec();
 
         if chunk_id.to_bin() == hash {
             let chunk = arguments::Chunk {

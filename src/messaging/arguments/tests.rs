@@ -1,7 +1,6 @@
 #![cfg(test)]
 
 use super::*;
-use sha2::{Digest, Sha256};
 use pretty_assertions::assert_eq;
 
 #[test]
@@ -12,11 +11,11 @@ fn test_argument_version() {
 
 #[test]
 fn test_argument_fileid() {
-    let mut h = Sha256::new();
+    let mut h = blake3::Hasher::new();
     let mut a = vec![112, 97, 116, 104, 47, 116, 111, 47, 102, 105, 108, 101];
     h.update(b"Hello world");
     let mut b = [0u8; 32];
-    b.copy_from_slice(&h.finalize());
+    b.copy_from_slice(&h.finalize().as_bytes().to_vec());
     a.extend_from_slice(&b);
     assert_eq!(
         FileId {

@@ -1,6 +1,5 @@
 use super::file_operations::CHUNK_SIZE;
 use crate::messaging::arguments::{FileId, FileList, FileMetadata, QualifiedChunk};
-use sha2::{Digest, Sha256};
 use std::{
     fs::{self, File},
     io::{self, Read, Seek, SeekFrom, Write},
@@ -12,7 +11,7 @@ fn chunk_file(path: &Path) -> Result<Vec<[u8; 32]>, io::Error> {
     let mut file = File::open(path)?;
     let size = file.metadata().unwrap().len();
 
-    let mut hasher = Sha256::new();
+    let mut hasher = blake3::Hasher::new();
 
     let mut chunks: Vec<[u8; 32]> = vec![];
 
@@ -22,7 +21,8 @@ fn chunk_file(path: &Path) -> Result<Vec<[u8; 32]>, io::Error> {
         let mut buf = vec![0; CHUNK_SIZE];
         let len = file.read(&mut buf)?;
         hasher.update(&buf[..len]);
-        chunks.push(hasher.finalize_reset().into());
+        chunks.push(hasher.finalize().into());
+        hasher.reset();
     }
 
     Ok(chunks)
