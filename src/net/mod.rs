@@ -48,28 +48,25 @@
 //! client.send(&msg).unwrap();
 //! ```
 
+pub mod error;
+
 use std::{
-    error::Error,
-    io::{self, Read, Write},
+    io::{Read, Write},
     net::TcpStream,
 };
-
 use base64ct::{Base64, Encoding};
 use snow::{Builder, Keypair, TransportState};
+use error::NetError;
 
 static NOISE_PATTERN: &str = "Noise_IK_25519_ChaChaPoly_BLAKE2s";
 
 pub trait NoiseConnection {
-    fn new(
-        stream: TcpStream,
-        static_key: &[u8],
-        remote_keys: &[Vec<u8>],
-    ) -> Result<Self, snow::Error>
+    fn new(stream: TcpStream, static_key: &[u8], remote_keys: &[Vec<u8>]) -> Result<Self, NetError>
     where
         Self: Sized;
-    fn send(&mut self, msg: &[u8]) -> Result<(), snow::Error>;
+    fn send(&mut self, msg: &[u8]) -> Result<(), NetError>;
     // TODO: A box probably isn't the best solution. Using for now.
-    fn recv(&mut self) -> Result<Vec<u8>, Box<dyn Error>>;
+    fn recv(&mut self) -> Result<Vec<u8>, NetError>;
 }
 
 pub struct NetServer {
@@ -83,7 +80,7 @@ impl NoiseConnection for NetServer {
         mut stream: TcpStream,
         static_key: &[u8],
         remote_keys: &[Vec<u8>],
-    ) -> Result<Self, snow::Error> {
+    ) -> Result<Self, NetError> {
         let mut buf = vec![0u8; 65535];
 
         // Setup builder to start handshake
@@ -91,7 +88,7 @@ impl NoiseConnection for NetServer {
         let mut noise = builder.local_private_key(static_key).build_responder()?;
 
         // <- e, es, s, ss
-        noise.read_message(&recv(&mut stream).unwrap(), &mut buf)?;
+        noise.read_message(&recv(&mut stream)?, &mut buf)?;
 
         // At this point, we have the initiator's static key and we can check if it's in our
         // allowed list of keys
@@ -107,20 +104,20 @@ impl NoiseConnection for NetServer {
 
         // -> e, ee, se
         let len = noise.write_message(&[0u8; 0], &mut buf)?;
-        send(&mut stream, &buf[..len]);
+        send(&mut stream, &buf[..len])?;
 
         // Finished handshake. Switch to transport mode
         let noise = noise.into_transport_mode()?;
         Ok(NetServer { stream, buf, noise })
     }
 
-    fn send(&mut self, msg: &[u8]) -> Result<(), snow::Error> {
+    fn send(&mut self, msg: &[u8]) -> Result<(), NetError> {
         let len = self.noise.write_message(msg, &mut self.buf)?;
-        send(&mut self.stream, &self.buf[..len]);
+        send(&mut self.stream, &self.buf[..len])?;
         Ok(())
     }
 
-    fn recv(&mut self) -> Result<Vec<u8>, Box<dyn Error>> {
+    fn recv(&mut self) -> Result<Vec<u8>, NetError> {
         let len = self
             .noise
             .read_message(&recv(&mut self.stream)?, &mut self.buf)?;
@@ -135,19 +132,17 @@ pub struct NetClient {
 }
 
 impl NetClient {
-    pub fn read_raw(&mut self, raw_msg: &[u8]) -> Result<Vec<u8>, Box<dyn Error>> {
+    pub fn read_raw(&mut self, raw_msg: &[u8]) -> Result<Vec<u8>, NetError> {
         let len = self.noise.read_message(raw_msg, &mut self.buf)?;
         Ok(self.buf[..len].to_vec())
     }
 
-    pub fn clone_stream(&self) -> Result<TcpStream, io::Error> {
-        self.stream.try_clone()
+    pub fn clone_stream(&self) -> Result<TcpStream, NetError> {
+        Ok(self.stream.try_clone()?)
     }
 
-    pub fn decrypt(&mut self, msg: &[u8]) -> Result<Vec<u8>, snow::Error> {
-        let len = self
-            .noise
-            .read_message(msg, &mut self.buf)?;
+    pub fn decrypt(&mut self, msg: &[u8]) -> Result<Vec<u8>, NetError> {
+        let len = self.noise.read_message(msg, &mut self.buf)?;
         Ok(self.buf[..len].to_vec())
     }
 }
@@ -157,7 +152,7 @@ impl NoiseConnection for NetClient {
         mut stream: TcpStream,
         static_key: &[u8],
         remote_keys: &[Vec<u8>],
-    ) -> Result<Self, snow::Error> {
+    ) -> Result<Self, NetError> {
         let mut buf = vec![0u8; 65535];
 
         // Setup builder to start handshake
@@ -171,7 +166,7 @@ impl NoiseConnection for NetClient {
 
         // -> e, es, s, ss
         let len = noise.write_message(&[], &mut buf).unwrap();
-        send(&mut stream, &buf[..len]);
+        send(&mut stream, &buf[..len])?;
 
         // <- e, ee, se
         noise
@@ -182,13 +177,14 @@ impl NoiseConnection for NetClient {
         Ok(NetClient { stream, buf, noise })
     }
 
-    fn send(&mut self, msg: &[u8]) -> Result<(), snow::Error> {
-        let len = self.noise.write_message(msg, &mut self.buf).unwrap();
-        send(&mut self.stream, &self.buf[..len]);
+    fn send(&mut self, msg: &[u8]) -> Result<(), NetError> {
+        debug!("Encrypting message of len {:?} bytes", msg.len());
+        let len = self.noise.write_message(msg, &mut self.buf)?;
+        send(&mut self.stream, &self.buf[..len])?;
         Ok(())
     }
 
-    fn recv(&mut self) -> Result<Vec<u8>, Box<dyn Error>> {
+    fn recv(&mut self) -> Result<Vec<u8>, NetError> {
         let len = self
             .noise
             .read_message(&recv(&mut self.stream)?, &mut self.buf)?;
@@ -196,7 +192,7 @@ impl NoiseConnection for NetClient {
     }
 }
 
-pub fn recv(stream: &mut TcpStream) -> io::Result<Vec<u8>> {
+pub fn recv(stream: &mut TcpStream) -> Result<Vec<u8>, NetError> {
     let mut msg_len_buf = [0u8; 2];
     stream.read_exact(&mut msg_len_buf)?;
     let msg_len = u16::from_be_bytes(msg_len_buf) as usize;
@@ -205,11 +201,12 @@ pub fn recv(stream: &mut TcpStream) -> io::Result<Vec<u8>> {
     Ok(msg)
 }
 
-fn send(stream: &mut TcpStream, msg: &[u8]) {
+fn send(stream: &mut TcpStream, msg: &[u8]) -> Result<(), NetError> {
     let msg_len = (msg.len() as u16).to_be_bytes();
     // Time out might be needed here...?
-    stream.write_all(&msg_len).unwrap();
-    stream.write_all(msg).unwrap();
+    stream.write_all(&msg_len)?;
+    stream.write_all(msg)?;
+    Ok(())
 }
 
 pub fn generate_noise_keypair() -> Keypair {
