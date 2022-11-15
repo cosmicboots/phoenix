@@ -64,7 +64,7 @@ fn recursive_file_list(base: &Path, path: &Path) -> Result<Vec<FileId>, std::io:
         if path.is_dir() {
             files.append(&mut recursive_file_list(base, &path)?);
         } else {
-            let mut file_info = get_file_info(&path)?.file_id;
+            let mut file_info = FileId::new(path)?;
             file_info.path = file_info.path.strip_prefix(base).unwrap().to_owned();
             files.push(file_info);
         }
