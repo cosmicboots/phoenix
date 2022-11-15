@@ -178,7 +178,9 @@ impl NoiseConnection for NetClient {
     }
 
     fn send(&mut self, msg: &[u8]) -> Result<(), NetError> {
-        debug!("Encrypting message of len {:?} bytes", msg.len());
+        if msg.len() > 65535 {
+            return Err(NetError::MsgLengthError(msg.len()));
+        }
         let len = self.noise.write_message(msg, &mut self.buf)?;
         send(&mut self.stream, &self.buf[..len])?;
         Ok(())

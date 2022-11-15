@@ -121,6 +121,9 @@ fn handle_server_event(
 
             for file in local_files.difference(&server_files) {
                 debug!("File not found on server: {:?}", file.path);
+                client
+                    .send_file_info(watch_path, &watch_path.join(&file.path))
+                    .unwrap();
             }
             for file in server_files.difference(&local_files) {
                 debug!("File not found locally: {:?}", file.path);
@@ -165,8 +168,11 @@ fn handle_server_event(
         }
         messaging::Directive::SendQualifiedChunk => {
             if let Some(argument) = event.argument {
-                utils::write_chunk(&watch_path.canonicalize().unwrap(), argument.as_any().downcast_ref::<QualifiedChunk>().unwrap())
-                    .unwrap();
+                utils::write_chunk(
+                    &watch_path.canonicalize().unwrap(),
+                    argument.as_any().downcast_ref::<QualifiedChunk>().unwrap(),
+                )
+                .unwrap();
             }
         }
         messaging::Directive::DeleteFile => todo!(),

@@ -19,8 +19,8 @@ use std::{
     thread,
 };
 
-pub const CHUNK_SIZE: usize = 8; // 8 byte chunk size. TODO: automatically determine this. Probably
-                                 // using file size ranges
+pub const CHUNK_SIZE: usize = 1024; // 8 byte chunk size. TODO: automatically determine this.
+                                    // Probably using file size ranges
 
 /// This struct is the main entry point for any operations that come from the client.
 ///
@@ -45,7 +45,7 @@ impl Client {
             while let Ok(data) = rx.recv() {
                 if let Err(e) = client.lock().unwrap().send(&data) {
                     // TODO: handle errors. Possibly requeue them
-                    error!("{:?}", e);
+                    error!("Failed to process msg_queue: {:?}", e);
                 };
             }
         });
@@ -118,7 +118,9 @@ impl Client {
     }
 
     pub fn request_chunk(&mut self, chunk: QualifiedChunkId) -> Result<(), SendError<Vec<u8>>> {
-        let msg = self.builder.encode_message::<arguments::QualifiedChunkId>(Directive::RequestChunk, Some(chunk));
+        let msg = self
+            .builder
+            .encode_message::<arguments::QualifiedChunkId>(Directive::RequestChunk, Some(chunk));
         self.msg_queue_tx.send(msg)
     }
 

@@ -30,12 +30,10 @@ fn chunk_file(path: &Path) -> Result<Vec<[u8; 32]>, io::Error> {
 
 /// Write a `QualifiedChunk` to it's specified file
 pub fn write_chunk(base_path: &Path, chunk: &QualifiedChunk) -> Result<(), std::io::Error> {
-    debug!("File location: {:?}", base_path.join(&chunk.id.path.path));
     let mut file = File::options()
         .write(true)
         .open(base_path.join(&chunk.id.path.path))?;
     file.seek(SeekFrom::Start(chunk.id.offset as u64))?;
-    debug!("Writing: {:?}", chunk.data);
     file.write_all(&chunk.data)?;
     Ok(())
 }
