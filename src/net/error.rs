@@ -3,11 +3,11 @@ use std::{error::Error, fmt::Display, io};
 #[derive(Debug)]
 pub enum NetError {
     /// Generic Noise Error
-    NoiseError(String),
+    Noise(String),
     /// Network message too long to send using Noise
-    MsgLengthError(usize),
+    MsgLength(usize),
     /// Generic IO Error
-    IOError(String),
+    IO(String),
 }
 
 impl Display for NetError {
@@ -20,12 +20,12 @@ impl Error for NetError {}
 
 impl From<snow::Error> for NetError {
     fn from(e: snow::Error) -> Self {
-        NetError::NoiseError(format!("{}", e))
+        NetError::Noise(format!("{}", e))
     }
 }
 
 impl From<io::Error> for NetError {
     fn from(e: io::Error) -> Self {
-        NetError::IOError(format!("{}", e))
+        NetError::IO(format!("{}", e))
     }
 }

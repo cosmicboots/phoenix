@@ -171,7 +171,7 @@ fn handle_server_event(
         messaging::Directive::SendQualifiedChunk => {
             if let Some(argument) = event.argument {
                 if let Err(e) = utils::write_chunk(
-                    blacklist.clone(),
+                    blacklist,
                     &watch_path.canonicalize().unwrap(),
                     argument.as_any().downcast_ref::<QualifiedChunk>().unwrap(),
                 ) {
