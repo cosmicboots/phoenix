@@ -4,10 +4,10 @@ use base64ct::{Base64, Encoding};
 
 use db::Db;
 
-use crate::messaging::{
-    arguments::{Chunk, FileMetadata, QualifiedChunkId},
+use crate::{messaging::{
+    arguments::{Chunk, FileId, FileMetadata, QualifiedChunk, QualifiedChunkId},
     Directive,
-};
+}, client::CHUNK_SIZE};
 
 use super::{
     config::{Config, ServerConfig},
@@ -57,13 +57,14 @@ pub fn start_server(config_file: &Path) {
                             .add_file(metadata)
                             .expect("Failed to add file to database");
 
-                        for chunk in chunks {
+                        for (i, chunk) in chunks.iter().enumerate() {
                             let qualified_chunk = QualifiedChunkId {
                                 path: metadata.file_id.clone(),
-                                id: chunk,
+                                offset: (i * CHUNK_SIZE) as u32,
+                                id: chunk.clone(),
                             };
-                            let msg =
-                                msg_builder.encode_message(Directive::RequestChunk, Some(qualified_chunk));
+                            let msg = msg_builder
+                                .encode_message(Directive::RequestChunk, Some(qualified_chunk));
                             let _ = &svc.send(&msg);
                         }
                     }
@@ -81,6 +82,32 @@ pub fn start_server(config_file: &Path) {
                         let files = db.get_files().unwrap();
                         debug!("Sending file list to client");
                         let msg = msg_builder.encode_message(Directive::SendFiles, Some(files));
+                        let _ = &svc.send(&msg);
+                    }
+                    Directive::RequestFile => {
+                        let argument = msg.argument.unwrap();
+                        let file_id = argument.as_any().downcast_ref::<FileId>().unwrap();
+                        let file = db.get_file(file_id.path.to_str().unwrap()).unwrap();
+                        let msg = msg_builder.encode_message(Directive::SendFile, Some(file));
+                        let _ = &svc.send(&msg);
+                    }
+                    Directive::RequestChunk => {
+                        let argument = msg.argument.unwrap();
+                        let chunk_id = argument
+                            .as_any()
+                            .downcast_ref::<QualifiedChunkId>()
+                            .unwrap();
+                        let mut buf = [0u8; 32];
+                        buf.copy_from_slice(&chunk_id.id.0);
+                        let chunk = db.get_chunk(buf).unwrap();
+                        let q_chunk = QualifiedChunk {
+                            id: chunk_id.clone(),
+                            data: chunk.data,
+                        };
+                        let msg = msg_builder.encode_message::<QualifiedChunk>(
+                            Directive::SendQualifiedChunk,
+                            Some(q_chunk),
+                        );
                         let _ = &svc.send(&msg);
                     }
                     _ => todo!(),

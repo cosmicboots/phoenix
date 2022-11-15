@@ -1,8 +1,7 @@
 #![cfg(test)]
 
-use sha2::{Digest, Sha256};
-
 use super::*;
+use pretty_assertions::assert_eq;
 
 #[test]
 fn test_argument_version() {
@@ -12,11 +11,11 @@ fn test_argument_version() {
 
 #[test]
 fn test_argument_fileid() {
-    let mut h = Sha256::new();
+    let mut h = blake3::Hasher::new();
     let mut a = vec![112, 97, 116, 104, 47, 116, 111, 47, 102, 105, 108, 101];
     h.update(b"Hello world");
     let mut b = [0u8; 32];
-    b.copy_from_slice(&h.finalize());
+    b.copy_from_slice(&h.finalize().as_bytes().to_vec());
     a.extend_from_slice(&b);
     assert_eq!(
         FileId {
@@ -48,12 +47,29 @@ fn test_argument_chunkid() {
 }
 
 #[test]
+fn test_qualfied_chunk() {
+    let chunk = QualifiedChunk {
+        id: QualifiedChunkId {
+            path: FileId {
+                path: PathBuf::from("dir/file"),
+                hash: [0u8; 32],
+            },
+            offset: 0x02020202,
+            id: ChunkId([1u8; 32].to_vec()),
+        },
+        data: vec![9,8,7,6,5,4,3,2,1,0],
+    };
+    assert_eq!(chunk, QualifiedChunk::from_bin(&chunk.to_bin()).unwrap())
+}
+
+#[test]
 fn test_qualified_chunkid() {
     let chunk_id = QualifiedChunkId {
         path: FileId {
             path: PathBuf::from("dir/file"),
             hash: [0u8; 32],
         },
+        offset: 0x02020202,
         id: ChunkId([1u8; 32].to_vec()),
     };
 
@@ -62,18 +78,18 @@ fn test_qualified_chunkid() {
         vec![
             0u8, 0u8, 0u8, 40u8, 100u8, 105u8, 114u8, 47u8, 102u8, 105u8, 108u8, 101u8, 0u8, 0u8,
             0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8,
-            0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 1u8, 1u8, 1u8, 1u8,
+            0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 2u8, 2u8, 2u8, 2u8,
             1u8, 1u8, 1u8, 1u8, 1u8, 1u8, 1u8, 1u8, 1u8, 1u8, 1u8, 1u8, 1u8, 1u8, 1u8, 1u8, 1u8,
-            1u8, 1u8, 1u8, 1u8, 1u8, 1u8, 1u8, 1u8, 1u8, 1u8, 1u8
+            1u8, 1u8, 1u8, 1u8, 1u8, 1u8, 1u8, 1u8, 1u8, 1u8, 1u8, 1u8, 1u8, 1u8, 1u8,
         ]
     );
 
     let raw_chunk_id = vec![
         0u8, 0u8, 0u8, 40u8, 100u8, 105u8, 114u8, 47u8, 102u8, 105u8, 108u8, 101u8, 0u8, 0u8, 0u8,
         0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8,
-        0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 1u8, 1u8, 1u8, 1u8, 1u8, 1u8, 1u8,
+        0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 2u8, 2u8, 2u8, 2u8, 1u8, 1u8, 1u8,
         1u8, 1u8, 1u8, 1u8, 1u8, 1u8, 1u8, 1u8, 1u8, 1u8, 1u8, 1u8, 1u8, 1u8, 1u8, 1u8, 1u8, 1u8,
-        1u8, 1u8, 1u8, 1u8, 1u8, 1u8, 1u8,
+        1u8, 1u8, 1u8, 1u8, 1u8, 1u8, 1u8, 1u8, 1u8, 1u8, 1u8,
     ];
 
     assert_eq!(QualifiedChunkId::from_bin(&raw_chunk_id).unwrap(), chunk_id);

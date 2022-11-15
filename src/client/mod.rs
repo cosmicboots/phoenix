@@ -1,28 +1,34 @@
+use crate::{
+    config::{ClientConfig, Config},
+    messaging::{
+        self,
+        arguments::{FileId, FileList, FileMetadata, QualifiedChunk, QualifiedChunkId},
+        Message, MessageBuilder,
+    },
+    net::{NetClient, NoiseConnection},
+};
 use base64ct::{Base64, Encoding};
+use file_operations::Client;
 use notify::{watcher, DebouncedEvent, Watcher};
 use std::{
-    collections::HashSet,
-    fs,
+    collections::{HashSet, HashMap},
+    fs::{self, File},
     net::TcpStream,
     path::{Path, PathBuf},
-    sync::mpsc::{self, Receiver, Sender},
+    sync::{
+        mpsc::{self, Receiver, Sender},
+        Arc, Mutex,
+    },
     thread,
     time::Duration,
 };
 
 mod file_operations;
+mod utils;
 
-use file_operations::Client;
+pub use file_operations::CHUNK_SIZE;
 
-use crate::{
-    config::{ClientConfig, Config},
-    messaging::{
-        self,
-        arguments::{FileId, FileList, QualifiedChunkId},
-        Message, MessageBuilder,
-    },
-    net::{NetClient, NoiseConnection},
-};
+pub type Blacklist = Arc<Mutex<HashMap<PathBuf, FileMetadata>>>;
 
 #[derive(Debug)]
 pub enum QueueItem {
@@ -68,27 +74,38 @@ pub fn start_client(config_file: &Path, path: &Path) {
 
     client.request_file_list().unwrap();
 
+    let blacklist: Blacklist = Arc::new(Mutex::new(HashMap::new()));
     loop {
         if let Ok(msg) = incoming_msg.recv() {
             match msg {
                 QueueItem::ServerMsg(push) => {
                     // TODO: decrypt this message using noise
                     let msg = MessageBuilder::decode_message(&push).unwrap();
-                    handle_server_event(&mut client, &watch_path, *msg);
+                    handle_server_event(&mut client, &watch_path, *msg, blacklist.clone());
                 }
                 QueueItem::FileMsg(event) => {
-                    handle_fs_event(&mut client, &watch_path.canonicalize().unwrap(), event)
+                    handle_fs_event(
+                        &mut client,
+                        &watch_path.canonicalize().unwrap(),
+                        event,
+                        blacklist.clone(),
+                    );
                 }
             }
         }
     }
 }
 
-fn handle_server_event(_client: &mut Client, watch_path: &Path, event: Message) {
+fn handle_server_event(
+    client: &mut Client,
+    watch_path: &Path,
+    event: Message,
+    blacklist: Blacklist,
+) {
     let verb = event.verb.clone();
     match verb {
         messaging::Directive::SendFiles => {
-            let files = file_operations::generate_file_list(watch_path).unwrap();
+            let files = utils::generate_file_list(watch_path).unwrap();
             let mut local_files: HashSet<FileId> = HashSet::new();
             for file in files.0 {
                 local_files.insert(file);
@@ -106,6 +123,13 @@ fn handle_server_event(_client: &mut Client, watch_path: &Path, event: Message) 
 
             for file in local_files.difference(&server_files) {
                 debug!("File not found on server: {:?}", file.path);
+                client
+                    .send_file_info(watch_path, &watch_path.join(&file.path))
+                    .unwrap();
+            }
+            for file in server_files.difference(&local_files) {
+                debug!("File not found locally: {:?}", file.path);
+                let _ = client.request_file(file.clone());
             }
         }
         messaging::Directive::RequestFile => todo!(),
@@ -116,30 +140,71 @@ fn handle_server_event(_client: &mut Client, watch_path: &Path, event: Message) 
                     .downcast_ref::<QualifiedChunkId>()
                     .unwrap();
                 let path = watch_path.join(chunk.path.path.clone());
-                _client
+                client
                     .send_chunk(&chunk.id, &path)
                     .expect("Failed to queue chunk");
             }
         }
-        messaging::Directive::SendFile => todo!(),
-        messaging::Directive::SendChunk => todo!(),
+        messaging::Directive::SendFile => {
+            if let Some(argument) = event.argument {
+                let file_md = argument.as_any().downcast_ref::<FileMetadata>().unwrap();
+                let path = file_md.file_id.path.clone();
+                {
+                    // The blacklist needs to be updated to make sure we dont send file information
+                    // for a in progress transfer
+                    let mut bl = blacklist.lock().unwrap();
+                    bl.insert(path, file_md.clone());
+                    debug!("Added file to watcher blacklist. Current list: {:?}", bl);
+                }
+                let mut _file = File::create(watch_path.join(&file_md.file_id.path)).unwrap();
+                info!("Started file download: {:?}", &file_md.file_id.path);
+                for (i, chunk) in file_md.chunks.iter().enumerate() {
+                    let q_chunk = QualifiedChunkId {
+                        path: file_md.file_id.clone(),
+                        offset: (i * CHUNK_SIZE) as u32,
+                        id: chunk.clone(),
+                    };
+                    client.request_chunk(q_chunk).unwrap();
+                }
+            }
+        }
+        messaging::Directive::SendQualifiedChunk => {
+            if let Some(argument) = event.argument {
+                if let Err(e) = utils::write_chunk(
+                    blacklist,
+                    &watch_path.canonicalize().unwrap(),
+                    argument.as_any().downcast_ref::<QualifiedChunk>().unwrap(),
+                ) {
+                    error!("{}", e);
+                }
+            }
+        }
         messaging::Directive::DeleteFile => todo!(),
         _ => {}
     };
 }
 
-fn handle_fs_event(client: &mut Client, watch_path: &Path, event: DebouncedEvent) {
+fn handle_fs_event(
+    client: &mut Client,
+    watch_path: &Path,
+    event: DebouncedEvent,
+    blacklist: Blacklist,
+) {
     match event {
         DebouncedEvent::Rename(_, p)
         | DebouncedEvent::Create(p)
         | DebouncedEvent::Write(p)
         | DebouncedEvent::Chmod(p) => {
-            match client.send_file_info(watch_path, &p) {
-                Ok(_) => {
-                    info!("Successfully sent the file");
-                }
-                Err(e) => error!("{:?}", e),
-            };
+            // Check the blacklist to make sure the event isn't from a partial file transfer
+            let bl = blacklist.lock().unwrap();
+            if !bl.contains_key(p.strip_prefix(watch_path).unwrap()) {
+                match client.send_file_info(watch_path, &p) {
+                    Ok(_) => {
+                        info!("Successfully sent the file");
+                    }
+                    Err(e) => error!("{:?}", e),
+                };
+            }
         }
         _ => {}
     }

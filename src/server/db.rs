@@ -161,7 +161,7 @@ impl Db {
                         if let Some(x) = rc_merge(cc.get(&chunk.0)?, 1) {
                             cc.insert(&*chunk.0, x)?;
                         };
-                        if let None = ct.get(&chunk.0)? {
+                        if (ct.get(&chunk.0)?).is_none() {
                             new_chunks.push(chunk.clone());
                             let mut ref_files: Vec<String> = match mc.get(&*chunk.0)? {
                                 Some(x) => bincode::deserialize::<Vec<String>>(&x).unwrap(),
@@ -189,8 +189,8 @@ impl Db {
     }
 
     /// Returns a [File](struct.File.html) from the database when given a file_hash.
-    pub fn get_file(&self, file_hash: &str) -> sled::Result<FileMetadata> {
-        match self.file_table.get(file_hash) {
+    pub fn get_file(&self, file: &str) -> sled::Result<FileMetadata> {
+        match self.file_table.get(file) {
             Ok(x) => match x {
                 Some(value) => Ok(
                     bincode::deserialize::<FileMetadata>(&value).expect("Failed to deserialize")
@@ -237,7 +237,7 @@ impl Db {
                                     bincode::deserialize::<FileMetadata>(&raw_file).unwrap();
                                 let mut file_complete = true;
                                 for chunk in file_md.chunks {
-                                    if let Some(_) = mc.get(&chunk.0)? {
+                                    if (mc.get(&chunk.0)?).is_some() {
                                         file_complete = false;
                                         break;
                                     }

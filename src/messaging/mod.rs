@@ -69,6 +69,7 @@ pub enum Directive {
     RequestChunk,
     SendFile,
     SendChunk,
+    SendQualifiedChunk,
     DeleteFile,
     Response,
 }
@@ -87,8 +88,9 @@ impl TryFrom<u16> for Directive {
             4 => Ok(Directive::RequestChunk),
             5 => Ok(Directive::SendFile),
             6 => Ok(Directive::SendChunk),
-            7 => Ok(Directive::DeleteFile),
-            8 => Ok(Directive::Response),
+            7 => Ok(Directive::SendQualifiedChunk),
+            8 => Ok(Directive::DeleteFile),
+            9 => Ok(Directive::Response),
             _ => Err("Failed to convert Directive"),
         }
     }
@@ -208,6 +210,9 @@ impl MessageBuilder {
                 }
                 Directive::SendFile => Some(Box::new(arguments::FileMetadata::from_bin(&x)?)),
                 Directive::SendChunk => Some(Box::new(arguments::Chunk::from_bin(&x)?)),
+                Directive::SendQualifiedChunk => {
+                    Some(Box::new(arguments::QualifiedChunk::from_bin(&x)?))
+                }
                 Directive::DeleteFile => Some(Box::new(arguments::FileId::from_bin(&x)?)),
                 Directive::Response => Some(Box::new(arguments::ResponseCode::from_bin(&x)?)),
             };
