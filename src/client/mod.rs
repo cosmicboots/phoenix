@@ -11,14 +11,11 @@ use base64ct::{Base64, Encoding};
 use file_operations::Client;
 use notify::{watcher, DebouncedEvent, Watcher};
 use std::{
-    collections::{HashSet, HashMap},
+    collections::{HashMap, HashSet},
     fs::{self, File},
     net::TcpStream,
     path::{Path, PathBuf},
-    sync::{
-        mpsc::{self, Receiver, Sender},
-        Arc, Mutex,
-    },
+    sync::mpsc::{self, Receiver, Sender},
     thread,
     time::Duration,
 };
@@ -28,7 +25,7 @@ mod utils;
 
 pub use file_operations::CHUNK_SIZE;
 
-pub type Blacklist = Arc<Mutex<HashMap<PathBuf, FileMetadata>>>;
+pub type Blacklist = HashMap<PathBuf, FileMetadata>;
 
 #[derive(Debug)]
 pub enum QueueItem {
@@ -74,21 +71,21 @@ pub fn start_client(config_file: &Path, path: &Path) {
 
     client.request_file_list().unwrap();
 
-    let blacklist: Blacklist = Arc::new(Mutex::new(HashMap::new()));
+    let mut blacklist: Blacklist = HashMap::new();
     loop {
         if let Ok(msg) = incoming_msg.recv() {
             match msg {
                 QueueItem::ServerMsg(push) => {
                     // TODO: decrypt this message using noise
                     let msg = MessageBuilder::decode_message(&push).unwrap();
-                    handle_server_event(&mut client, &watch_path, *msg, blacklist.clone());
+                    handle_server_event(&mut client, &watch_path, *msg, &mut blacklist);
                 }
                 QueueItem::FileMsg(event) => {
                     handle_fs_event(
                         &mut client,
                         &watch_path.canonicalize().unwrap(),
                         event,
-                        blacklist.clone(),
+                        &mut blacklist,
                     );
                 }
             }
@@ -100,7 +97,7 @@ fn handle_server_event(
     client: &mut Client,
     watch_path: &Path,
     event: Message,
-    blacklist: Blacklist,
+    blacklist: &mut Blacklist,
 ) {
     let verb = event.verb.clone();
     match verb {
@@ -149,13 +146,13 @@ fn handle_server_event(
             if let Some(argument) = event.argument {
                 let file_md = argument.as_any().downcast_ref::<FileMetadata>().unwrap();
                 let path = file_md.file_id.path.clone();
-                {
-                    // The blacklist needs to be updated to make sure we dont send file information
-                    // for a in progress transfer
-                    let mut bl = blacklist.lock().unwrap();
-                    bl.insert(path, file_md.clone());
-                    debug!("Added file to watcher blacklist. Current list: {:?}", bl);
-                }
+                // The blacklist needs to be updated to make sure we dont send file information for
+                // a in progress transfer
+                blacklist.insert(path, file_md.clone());
+                debug!(
+                    "Added file to watcher blacklist. Current list: {:?}",
+                    blacklist
+                );
                 let mut _file = File::create(watch_path.join(&file_md.file_id.path)).unwrap();
                 info!("Started file download: {:?}", &file_md.file_id.path);
                 for (i, chunk) in file_md.chunks.iter().enumerate() {
@@ -188,7 +185,7 @@ fn handle_fs_event(
     client: &mut Client,
     watch_path: &Path,
     event: DebouncedEvent,
-    blacklist: Blacklist,
+    blacklist: &mut Blacklist,
 ) {
     match event {
         DebouncedEvent::Rename(_, p)
@@ -196,7 +193,7 @@ fn handle_fs_event(
         | DebouncedEvent::Write(p)
         | DebouncedEvent::Chmod(p) => {
             // Check the blacklist to make sure the event isn't from a partial file transfer
-            let bl = blacklist.lock().unwrap();
+            let bl = blacklist;
             if !bl.contains_key(p.strip_prefix(watch_path).unwrap()) {
                 match client.send_file_info(watch_path, &p) {
                     Ok(_) => {

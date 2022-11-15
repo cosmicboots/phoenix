@@ -30,7 +30,7 @@ fn chunk_file(path: &Path) -> Result<Vec<[u8; 32]>, io::Error> {
 
 /// Write a `QualifiedChunk` to it's specified file
 pub fn write_chunk(
-    blacklist: Blacklist,
+    blacklist: &mut Blacklist,
     base_path: &Path,
     chunk: &QualifiedChunk,
 ) -> Result<(), std::io::Error> {
@@ -39,8 +39,7 @@ pub fn write_chunk(
         .open(base_path.join(&chunk.id.path.path))?;
     file.seek(SeekFrom::Start(chunk.id.offset as u64))?;
     file.write_all(&chunk.data)?;
-    let mut bl = blacklist.lock().unwrap();
-    if let Some(x) = bl.get(&chunk.id.path.path) {
+    if let Some(x) = blacklist.get(&chunk.id.path.path) {
         let hash = x.file_id.hash;
         if FileId::new(base_path.join(&chunk.id.path.path))
             .unwrap()
@@ -49,7 +48,7 @@ pub fn write_chunk(
             == hash
         {
             debug!("File download completed for {:?}", chunk.id.path.path);
-            bl.remove(&chunk.id.path.path);
+            blacklist.remove(&chunk.id.path.path);
         }
     }
     Ok(())
