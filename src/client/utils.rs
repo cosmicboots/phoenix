@@ -1,4 +1,4 @@
-use super::file_operations::CHUNK_SIZE;
+use super::{file_operations::CHUNK_SIZE, Blacklist};
 use crate::messaging::arguments::{FileId, FileList, FileMetadata, QualifiedChunk};
 use std::{
     fs::{self, File},
@@ -29,12 +29,29 @@ fn chunk_file(path: &Path) -> Result<Vec<[u8; 32]>, io::Error> {
 }
 
 /// Write a `QualifiedChunk` to it's specified file
-pub fn write_chunk(base_path: &Path, chunk: &QualifiedChunk) -> Result<(), std::io::Error> {
+pub fn write_chunk(
+    blacklist: Blacklist,
+    base_path: &Path,
+    chunk: &QualifiedChunk,
+) -> Result<(), std::io::Error> {
     let mut file = File::options()
         .write(true)
         .open(base_path.join(&chunk.id.path.path))?;
     file.seek(SeekFrom::Start(chunk.id.offset as u64))?;
     file.write_all(&chunk.data)?;
+    let mut bl = blacklist.lock().unwrap();
+    if let Some(x) = bl.get(&chunk.id.path.path) {
+        let hash = x.file_id.hash;
+        if FileId::new(base_path.join(&chunk.id.path.path))
+            .unwrap()
+            .hash
+            .to_vec()
+            == hash
+        {
+            debug!("File download completed for {:?}", chunk.id.path.path);
+            bl.remove(&chunk.id.path.path);
+        }
+    }
     Ok(())
 }
 

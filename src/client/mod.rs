@@ -11,7 +11,7 @@ use base64ct::{Base64, Encoding};
 use file_operations::Client;
 use notify::{watcher, DebouncedEvent, Watcher};
 use std::{
-    collections::HashSet,
+    collections::{HashSet, HashMap},
     fs::{self, File},
     net::TcpStream,
     path::{Path, PathBuf},
@@ -27,6 +27,8 @@ mod file_operations;
 mod utils;
 
 pub use file_operations::CHUNK_SIZE;
+
+pub type Blacklist = Arc<Mutex<HashMap<PathBuf, FileMetadata>>>;
 
 #[derive(Debug)]
 pub enum QueueItem {
@@ -72,7 +74,7 @@ pub fn start_client(config_file: &Path, path: &Path) {
 
     client.request_file_list().unwrap();
 
-    let blacklist: Arc<Mutex<HashSet<PathBuf>>> = Arc::new(Mutex::new(HashSet::new()));
+    let blacklist: Blacklist = Arc::new(Mutex::new(HashMap::new()));
     loop {
         if let Ok(msg) = incoming_msg.recv() {
             match msg {
@@ -98,7 +100,7 @@ fn handle_server_event(
     client: &mut Client,
     watch_path: &Path,
     event: Message,
-    blacklist: Arc<Mutex<HashSet<PathBuf>>>,
+    blacklist: Blacklist,
 ) {
     let verb = event.verb.clone();
     match verb {
@@ -151,7 +153,7 @@ fn handle_server_event(
                     // The blacklist needs to be updated to make sure we dont send file information
                     // for a in progress transfer
                     let mut bl = blacklist.lock().unwrap();
-                    bl.insert(path);
+                    bl.insert(path, file_md.clone());
                     debug!("Added file to watcher blacklist. Current list: {:?}", bl);
                 }
                 let mut _file = File::create(watch_path.join(&file_md.file_id.path)).unwrap();
@@ -168,11 +170,13 @@ fn handle_server_event(
         }
         messaging::Directive::SendQualifiedChunk => {
             if let Some(argument) = event.argument {
-                utils::write_chunk(
+                if let Err(e) = utils::write_chunk(
+                    blacklist.clone(),
                     &watch_path.canonicalize().unwrap(),
                     argument.as_any().downcast_ref::<QualifiedChunk>().unwrap(),
-                )
-                .unwrap();
+                ) {
+                    error!("{}", e);
+                }
             }
         }
         messaging::Directive::DeleteFile => todo!(),
@@ -184,7 +188,7 @@ fn handle_fs_event(
     client: &mut Client,
     watch_path: &Path,
     event: DebouncedEvent,
-    blacklist: Arc<Mutex<HashSet<PathBuf>>>,
+    blacklist: Blacklist,
 ) {
     match event {
         DebouncedEvent::Rename(_, p)
@@ -193,7 +197,7 @@ fn handle_fs_event(
         | DebouncedEvent::Chmod(p) => {
             // Check the blacklist to make sure the event isn't from a partial file transfer
             let bl = blacklist.lock().unwrap();
-            if !bl.contains(p.strip_prefix(watch_path).unwrap()) {
+            if !bl.contains_key(p.strip_prefix(watch_path).unwrap()) {
                 match client.send_file_info(watch_path, &p) {
                     Ok(_) => {
                         info!("Successfully sent the file");
