@@ -145,7 +145,7 @@ pub fn start_server(config_file: &Path) {
                     Directive::RequestFile => {
                         let argument = msg.argument.unwrap();
                         let file_id = argument.as_any().downcast_ref::<FileId>().unwrap();
-                        let file = db.get_file(file_id.path.to_str().unwrap()).unwrap();
+                        let file = db.get_file(file_id.path.to_str().unwrap()).unwrap().unwrap();
                         let msg = msg_builder.encode_message(Directive::SendFile, Some(file));
                         let _ = &svc.send(&msg);
                     }

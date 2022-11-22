@@ -189,13 +189,13 @@ impl Db {
     }
 
     /// Returns a [File](struct.File.html) from the database when given a file_hash.
-    pub fn get_file(&self, file: &str) -> sled::Result<FileMetadata> {
+    pub fn get_file(&self, file: &str) -> sled::Result<Option<FileMetadata>> {
         match self.file_table.get(file) {
             Ok(x) => match x {
                 Some(value) => Ok(
-                    bincode::deserialize::<FileMetadata>(&value).expect("Failed to deserialize")
+                    Some(bincode::deserialize::<FileMetadata>(&value).expect("Failed to deserialize"))
                 ),
-                None => panic!("Not found in the database"),
+                None => Ok(None),
             },
             Err(e) => Err(e),
         }
@@ -462,25 +462,16 @@ mod tests {
                     .as_millis(),
                 chunks: vec![],
             };
-            assert_eq!(file, db.get_file("TestFile").unwrap())
+            assert_eq!(Some(file), db.get_file("TestFile").unwrap())
         })
     }
 
-    //#[test]
+    #[test]
     fn test_file_rm() {
         run_test(|db| {
             let db = db.lock().unwrap();
-            let f = FileMetadata {
-                file_id: todo!(),
-                file_name: todo!(),
-                permissions: todo!(),
-                modified: todo!(),
-                created: todo!(),
-                chunks: todo!(),
-            };
-            db.add_file(&f).unwrap();
-            db.rm_file(&f.file_id.hash);
-            assert_eq!(f, db.get_file("ABCDEF1234567890").unwrap())
+            db.rm_file(&FilePath("TestFile".to_owned()));
+            assert_eq!(None, db.get_file("TestFile").unwrap())
         })
     }
 }
