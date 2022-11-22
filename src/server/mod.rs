@@ -2,12 +2,16 @@ mod db;
 
 use base64ct::{Base64, Encoding};
 
+use crossbeam_channel::{select, Receiver, Select, Sender};
 use db::Db;
 
-use crate::{messaging::{
-    arguments::{Chunk, FileId, FileMetadata, QualifiedChunk, QualifiedChunkId},
-    Directive,
-}, client::CHUNK_SIZE};
+use crate::{
+    client::CHUNK_SIZE,
+    messaging::{
+        arguments::{Chunk, FileId, FileMetadata, QualifiedChunk, QualifiedChunkId},
+        Directive, Message,
+    },
+};
 
 use super::{
     config::{Config, ServerConfig},
@@ -23,10 +27,35 @@ pub fn start_server(config_file: &Path) {
     // Construct TcpListener
     let listener = TcpListener::bind(&config.bind_address).unwrap();
 
+    // Store channel senders for each client connection thread
+    let (threads_tx, threads_rx): (Sender<Sender<Message>>, Receiver<Sender<Message>>) =
+        crossbeam_channel::unbounded();
+    let (broadcast_tx, broadcast_rx): (Sender<Message>, Receiver<Message>) =
+        crossbeam_channel::unbounded();
+
+    // Broadcast thread
+    thread::spawn(move || {
+        let mut threads: Vec<Sender<Message>> = vec![];
+        select! {
+            recv(threads_rx) -> t => threads.push(t.unwrap()),
+            recv(broadcast_rx) -> raw_msg => {
+                if let Ok(msg) = raw_msg {
+                    for thread in threads {
+                        thread.send(msg.clone()).unwrap();
+                    };
+                }
+            },
+        };
+    });
+
     // Iterate through streams
     println!("Listening for connections on {}...", config.bind_address);
     for stream in listener.incoming() {
         println!("Spawning connection...");
+
+        // Create channel to to recieve push events
+        let (msg_tx, msg_rx): (Sender<Message>, Receiver<Message>) = crossbeam_channel::unbounded();
+
         // Spawn thread to handle each stream
         let config = config.clone();
         let db = db.clone();
