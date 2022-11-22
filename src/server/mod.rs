@@ -2,14 +2,14 @@ mod db;
 
 use base64ct::{Base64, Encoding};
 
-use crossbeam_channel::{select, Receiver, Select, Sender};
+use crossbeam_channel::{select, Receiver, Sender};
 use db::Db;
 
 use crate::{
     client::CHUNK_SIZE,
     messaging::{
         arguments::{Chunk, FileId, FileMetadata, QualifiedChunk, QualifiedChunkId},
-        Directive, Message,
+        Directive,
     },
 };
 
@@ -28,24 +28,30 @@ pub fn start_server(config_file: &Path) {
     let listener = TcpListener::bind(&config.bind_address).unwrap();
 
     // Store channel senders for each client connection thread
-    let (threads_tx, threads_rx): (Sender<Sender<Message>>, Receiver<Sender<Message>>) =
+    let (threads_tx, threads_rx): (Sender<Sender<Vec<u8>>>, Receiver<Sender<Vec<u8>>>) =
         crossbeam_channel::unbounded();
-    let (broadcast_tx, broadcast_rx): (Sender<Message>, Receiver<Message>) =
+    let (broadcast_tx, broadcast_rx): (Sender<Vec<u8>>, Receiver<Vec<u8>>) =
         crossbeam_channel::unbounded();
 
     // Broadcast thread
     thread::spawn(move || {
-        let mut threads: Vec<Sender<Message>> = vec![];
-        select! {
-            recv(threads_rx) -> t => threads.push(t.unwrap()),
-            recv(broadcast_rx) -> raw_msg => {
-                if let Ok(msg) = raw_msg {
-                    for thread in threads {
-                        thread.send(msg.clone()).unwrap();
-                    };
-                }
-            },
-        };
+        let mut threads: Vec<Sender<Vec<u8>>> = vec![];
+        loop {
+            select! {
+                recv(threads_rx) -> t => {
+                    threads.push(t.unwrap());
+                    debug!("Added a client thread to the broadcast system.");
+                },
+                recv(broadcast_rx) -> raw_msg => {
+                    if let Ok(msg) = raw_msg {
+                        for thread in &threads {
+                            thread.send(msg.clone()).unwrap();
+                            debug!("Broadcasted a message through the system.");
+                        };
+                    }
+                },
+            };
+        }
     });
 
     // Iterate through streams
@@ -54,12 +60,17 @@ pub fn start_server(config_file: &Path) {
         println!("Spawning connection...");
 
         // Create channel to to recieve push events
-        let (msg_tx, msg_rx): (Sender<Message>, Receiver<Message>) = crossbeam_channel::unbounded();
+        let (msg_tx, msg_rx): (Sender<Vec<u8>>, Receiver<Vec<u8>>) = crossbeam_channel::unbounded();
+        threads_tx.send(msg_tx).unwrap();
 
         // Spawn thread to handle each stream
         let config = config.clone();
         let db = db.clone();
+        let broadcast = broadcast_tx.clone();
         thread::spawn(move || {
+            // TODO: Handle broadcast messages
+            let _bcast_rx = msg_rx;
+
             // Create new Server for use with noise layer
             let mut svc = NetServer::new(
                 stream.unwrap(),
@@ -98,14 +109,23 @@ pub fn start_server(config_file: &Path) {
                         }
                     }
                     Directive::SendChunk => {
-                        db.add_chunk(
-                            msg.argument
-                                .unwrap()
-                                .as_any()
-                                .downcast_ref::<Chunk>()
-                                .unwrap(),
-                        )
-                        .expect("Failed to add chunk to database");
+                        let complete = db
+                            .add_chunk(
+                                msg.argument
+                                    .unwrap()
+                                    .as_any()
+                                    .downcast_ref::<Chunk>()
+                                    .unwrap(),
+                            )
+                            .expect("Failed to add chunk to database");
+
+                        // If the file is complete, broadcast a fake `SendFile` message for every
+                        // thread to forward to the client
+                        if let Some(id) = complete {
+                            broadcast
+                                .send(msg_builder.encode_message(Directive::SendFile, Some(id)))
+                                .unwrap();
+                        }
                     }
                     Directive::ListFiles => {
                         let files = db.get_files().unwrap();

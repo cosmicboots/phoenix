@@ -203,13 +203,14 @@ impl Db {
 
     /// Adds a chunk into the [`chunk_table`](#structfield.chunk_table) table.
     ///
-    /// NOTE: This should be run after [`add_file()`](#method.add_file) so orphaned chunks into the
-    /// database. This function checks the chunk count table to ensure references to the chunk
-    /// exist. If this check wasn't preformed, it would be possible to add orphaned chunks into the
-    /// database, which would be expensive to clean up.
-    pub fn add_chunk(&self, chunk: &Chunk) -> sled::Result<()> {
-        //self.chunk_table.insert(&*chunk.hash, &*chunk.data)?;
-        (
+    /// NOTE: This should be run after [`add_file()`](#method.add_file).
+    /// This function checks the chunk count table to ensure references to the chunk exist. If this
+    /// check wasn't preformed, it would be possible to add orphaned chunks into the database,
+    /// which would be expensive to clean up.
+    ///
+    /// An optional `FileId` is returned if the file transfer was completed.
+    pub fn add_chunk(&self, chunk: &Chunk) -> sled::Result<Option<FileId>> {
+        let ret = (
             &self.chunk_table,
             &self.missing_chunks,
             &self.pending_table,
@@ -222,7 +223,7 @@ impl Db {
                     TransactionalTree,
                     TransactionalTree,
                 )|
-                 -> ConflictableTransactionResult<(), sled::Error> {
+                 -> ConflictableTransactionResult<Option<FileId>, sled::Error> {
                     // Check to see if the chunk is missing (via the missing_chunks table) to make
                     // sure orphaned chunks are never added into the database. This should prevent
                     // the need of expensive database clean up operations
@@ -245,15 +246,16 @@ impl Db {
                                 if file_complete {
                                     debug!("File completed transfer: {:?}", file);
                                     ft.insert(file.as_bytes(), &pt.remove(&*file)?.unwrap())?;
+                                    return Ok(Some(file_md.file_id));
                                 }
                             }
                         }
                     }
-                    Ok(())
+                    Ok(None)
                 },
             )
             .unwrap();
-        Ok(())
+        Ok(ret)
     }
 
     /// Gets a chunk out of the database given it's ID (hash).
