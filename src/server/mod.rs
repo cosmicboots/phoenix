@@ -50,9 +50,9 @@ pub fn start_server(config_file: &Path) {
                             if thread.send(msg.clone()).is_err() {
                                 // Assume the recieving thread died
                                 remove_queue.push(i);
-                            };
-                            debug!("Broadcasted a message through the system.");
+                            }
                         };
+                        debug!("Broadcasted a message through the system.");
                     }
                 },
             };
