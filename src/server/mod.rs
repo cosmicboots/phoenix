@@ -37,6 +37,7 @@ pub fn start_server(config_file: &Path) {
     // Broadcast thread
     thread::spawn(move || {
         let mut threads: Vec<Sender<Vec<u8>>> = vec![];
+        let mut remove_queue: Vec<usize> = vec![];
         loop {
             select! {
                 recv(threads_rx) -> t => {
@@ -45,13 +46,20 @@ pub fn start_server(config_file: &Path) {
                 },
                 recv(broadcast_rx) -> raw_msg => {
                     if let Ok(msg) = raw_msg {
-                        for thread in &threads {
-                            thread.send(msg.clone()).unwrap();
+                        for (i, thread) in threads.iter().enumerate() {
+                            if thread.send(msg.clone()).is_err() {
+                                // Assume the recieving thread died
+                                remove_queue.push(i);
+                            };
                             debug!("Broadcasted a message through the system.");
                         };
                     }
                 },
             };
+            while let Some(i) = remove_queue.pop() {
+                debug!("Removed an old broadcast channel handel");
+                threads.remove(i);
+            }
         }
     });
 
