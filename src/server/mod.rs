@@ -8,7 +8,7 @@ use db::Db;
 use crate::{
     client::CHUNK_SIZE,
     messaging::{
-        arguments::{Chunk, FileId, FileMetadata, QualifiedChunk, QualifiedChunkId},
+        arguments::{Chunk, FileId, FileMetadata, QualifiedChunk, QualifiedChunkId, FilePath},
         Directive,
     },
 };
@@ -167,6 +167,12 @@ pub fn start_server(config_file: &Path) {
                             Some(q_chunk),
                         );
                         let _ = &svc.send(&msg);
+                    }
+                    Directive::DeleteFile => {
+                        let argument = msg.argument.unwrap();
+                        let file_path = argument.as_any().downcast_ref::<FilePath>().unwrap();
+                        db.rm_file(file_path);
+                        debug!("Removed {:?} from the database", file_path);
                     }
                     _ => todo!(),
                 }

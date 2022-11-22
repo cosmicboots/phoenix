@@ -12,7 +12,7 @@ use std::{
     hash::Hash,
     io,
     os::unix::prelude::PermissionsExt,
-    path::PathBuf,
+    path::{PathBuf, Path},
     time, vec,
 };
 
@@ -98,6 +98,29 @@ impl Argument for FileId {
 
     fn as_any(&self) -> &dyn Any {
         self
+    }
+}
+
+#[derive(Debug)]
+pub struct FilePath(pub String);
+
+impl Argument for FilePath {
+    fn to_bin(&self) -> Vec<u8> {
+        self.0.as_bytes().to_vec()
+    }
+
+    fn from_bin(data: &[u8]) -> Result<Self, MessageError> {
+        Ok(Self(String::from_utf8(data.to_vec())?))
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+}
+
+impl FilePath {
+    pub fn new(path: &Path) -> Self {
+        FilePath(path.to_str().unwrap().to_owned())
     }
 }
 

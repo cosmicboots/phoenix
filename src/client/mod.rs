@@ -2,7 +2,7 @@ use crate::{
     config::{ClientConfig, Config},
     messaging::{
         self,
-        arguments::{FileId, FileList, FileMetadata, QualifiedChunk, QualifiedChunkId},
+        arguments::{FileId, FileList, FileMetadata, FilePath, QualifiedChunk, QualifiedChunkId},
         Message, MessageBuilder,
     },
     net::{NetClient, NoiseConnection},
@@ -193,14 +193,19 @@ fn handle_fs_event(
         | DebouncedEvent::Write(p)
         | DebouncedEvent::Chmod(p) => {
             // Check the blacklist to make sure the event isn't from a partial file transfer
-            let bl = blacklist;
-            if !bl.contains_key(p.strip_prefix(watch_path).unwrap()) {
+            if !blacklist.contains_key(p.strip_prefix(watch_path).unwrap()) {
                 match client.send_file_info(watch_path, &p) {
                     Ok(_) => {
                         info!("Successfully sent the file");
                     }
                     Err(e) => error!("{:?}", e),
                 };
+            }
+        }
+        DebouncedEvent::Remove(p) => {
+            match client.delete_file(FilePath::new(p.strip_prefix(watch_path).unwrap())) {
+                Ok(_) => info!("Successfully deleted the file"),
+                Err(e) => error!("{:?}", e),
             }
         }
         _ => {}

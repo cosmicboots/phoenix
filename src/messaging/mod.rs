@@ -216,7 +216,7 @@ impl MessageBuilder {
                 Directive::SendQualifiedChunk => {
                     Some(Box::new(arguments::QualifiedChunk::from_bin(&x)?))
                 }
-                Directive::DeleteFile => Some(Box::new(arguments::FileId::from_bin(&x)?)),
+                Directive::DeleteFile => Some(Box::new(arguments::FilePath::from_bin(&x)?)),
                 Directive::Response => Some(Box::new(arguments::ResponseCode::from_bin(&x)?)),
             };
         }

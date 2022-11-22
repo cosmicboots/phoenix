@@ -2,7 +2,7 @@ use crate::{
     client::utils::get_file_info,
     client::QueueItem,
     messaging::{
-        arguments::{self, Argument, ChunkId, FileId, QualifiedChunkId},
+        arguments::{self, Argument, ChunkId, FileId, FilePath, QualifiedChunkId},
         Directive, MessageBuilder,
     },
     net::{self, NetClient, NoiseConnection},
@@ -136,6 +136,13 @@ impl Client {
         let msg = self
             .builder
             .encode_message(Directive::RequestFile, Some(file));
+        self.msg_queue_tx.send(msg)
+    }
+
+    pub fn delete_file(&mut self, file_path: FilePath) -> Result<(), SendError<Vec<u8>>> {
+        let msg = self
+            .builder
+            .encode_message(Directive::DeleteFile, Some(file_path));
         self.msg_queue_tx.send(msg)
     }
 }

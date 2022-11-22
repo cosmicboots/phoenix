@@ -10,7 +10,7 @@ use sled::{
 };
 use std::{collections::HashSet, fmt::Write, path::Path, vec};
 
-use crate::messaging::arguments::{Chunk, ChunkId, FileId, FileList, FileMetadata};
+use crate::messaging::arguments::{Chunk, ChunkId, FileId, FileList, FileMetadata, FilePath};
 
 /// Static name of the file_table
 static FILE_TABLE: &str = "file_table";
@@ -273,14 +273,14 @@ impl Db {
         }
     }
 
-    pub fn rm_file(&self, file_hash: &[u8]) {
+    pub fn rm_file(&self, file_path: &FilePath) {
         (&self.file_table, &self.chunk_table, &self.chunk_count)
             .transaction(
                 |(ft, ct, cc)| -> ConflictableTransactionResult<(), sled::Error> {
                     // 1. Get the file and desearialize it
                     // 2. Iterate through the chunks and decrement the refcounter
                     // 3.   if 0 refs, delete the chunk from the chunk table
-                    if let Ok(Some(bin_file)) = ft.get(&file_hash) {
+                    if let Ok(Some(bin_file)) = ft.get(&file_path.0.as_bytes()) {
                         // Deserialize bin into the File struct
                         if let Ok(file) = bincode::deserialize::<FileMetadata>(&bin_file) {
                             for chunk in file.chunks {
@@ -302,7 +302,7 @@ impl Db {
                                     }
                                 }
                             }
-                            ft.remove(&file.file_id.hash).unwrap();
+                            ft.remove(file_path.0.as_bytes()).unwrap();
                         }
                     }
                     Ok(())
