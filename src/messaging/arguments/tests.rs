@@ -57,7 +57,7 @@ fn test_qualfied_chunk() {
             offset: 0x02020202,
             id: ChunkId([1u8; 32].to_vec()),
         },
-        data: vec![9,8,7,6,5,4,3,2,1,0],
+        data: vec![9, 8, 7, 6, 5, 4, 3, 2, 1, 0],
     };
     assert_eq!(chunk, QualifiedChunk::from_bin(&chunk.to_bin()).unwrap())
 }

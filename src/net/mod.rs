@@ -50,13 +50,13 @@
 
 pub mod error;
 
+use base64ct::{Base64, Encoding};
+use error::NetError;
+use snow::{Builder, Keypair, TransportState};
 use std::{
     io::{Read, Write},
     net::TcpStream,
 };
-use base64ct::{Base64, Encoding};
-use snow::{Builder, Keypair, TransportState};
-use error::NetError;
 
 static NOISE_PATTERN: &str = "Noise_IK_25519_ChaChaPoly_BLAKE2s";
 

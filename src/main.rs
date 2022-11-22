@@ -8,7 +8,7 @@ mod server;
 #[macro_use]
 extern crate log;
 
-use std::{path::PathBuf, env};
+use std::{env, path::PathBuf};
 
 use base64ct::{Base64, Encoding};
 use clap::{ArgGroup, Parser, Subcommand};

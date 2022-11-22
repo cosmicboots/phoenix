@@ -20,6 +20,8 @@ use super::{
 };
 use std::{net::TcpListener, path::Path, sync::Arc, thread};
 
+type TxRxHandles = (Sender<Sender<Vec<u8>>>, Receiver<Sender<Vec<u8>>>);
+
 pub fn start_server(config_file: &Path) {
     let config = Arc::new(ServerConfig::read_config(config_file).expect("Bad config"));
     let db = Arc::new(Db::new(&config.storage_path).expect("Failed to open database"));
@@ -28,8 +30,7 @@ pub fn start_server(config_file: &Path) {
     let listener = TcpListener::bind(&config.bind_address).unwrap();
 
     // Store channel senders for each client connection thread
-    let (threads_tx, threads_rx): (Sender<Sender<Vec<u8>>>, Receiver<Sender<Vec<u8>>>) =
-        crossbeam_channel::unbounded();
+    let (threads_tx, threads_rx): TxRxHandles = crossbeam_channel::unbounded();
     let (broadcast_tx, broadcast_rx): (Sender<Vec<u8>>, Receiver<Vec<u8>>) =
         crossbeam_channel::unbounded();
 
