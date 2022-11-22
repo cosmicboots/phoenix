@@ -16,12 +16,11 @@ use std::{
     time, vec,
 };
 
-#[derive(Debug, PartialEq, Eq)]
-pub struct Error(String);
+use super::error::MessageError;
 
 pub trait Argument: Debug {
     fn to_bin(&self) -> Vec<u8>;
-    fn from_bin(data: &[u8]) -> Result<Self, Error>
+    fn from_bin(data: &[u8]) -> Result<Self, MessageError>
     where
         Self: Sized;
     fn as_any(&self) -> &dyn Any;
@@ -35,7 +34,7 @@ impl Argument for Version {
         self.0.to_be_bytes().to_vec()
     }
 
-    fn from_bin(ver: &[u8]) -> Result<Self, Error> {
+    fn from_bin(ver: &[u8]) -> Result<Self, MessageError> {
         Ok(Version(ver[0]))
     }
     fn as_any(&self) -> &dyn Any {
@@ -59,10 +58,10 @@ impl Clone for FileId {
 }
 
 impl FileId {
-    pub fn new(path: PathBuf) -> Result<Self, io::Error> {
+    pub fn new(path: PathBuf) -> Result<Self, MessageError> {
         let mut file = File::open(&path)?;
         let mut hasher = blake3::Hasher::new();
-        io::copy(&mut file, &mut hasher).unwrap();
+        io::copy(&mut file, &mut hasher)?;
         let hash = hasher.finalize();
         Ok(FileId {
             path,
@@ -73,18 +72,21 @@ impl FileId {
 
 impl Argument for FileId {
     fn to_bin(&self) -> Vec<u8> {
-        let mut x = self.path.to_str().unwrap().as_bytes().to_vec();
+        let mut x = match self.path.to_str() {
+            Some(s) => s.as_bytes().to_vec(),
+            None => vec![],
+        };
         x.extend_from_slice(&self.hash);
         x
     }
 
-    fn from_bin(data: &[u8]) -> Result<Self, Error> {
+    fn from_bin(data: &[u8]) -> Result<Self, MessageError> {
         if data.len() < 32 {
-            return Err(Error("FileId bin to short to convert".to_owned()));
+            return Err(MessageError::InvalidBin);
         }
         let path = match String::from_utf8(data[..data.len() - 32].to_vec()) {
             Ok(x) => Ok(PathBuf::from(x)),
-            Err(_) => Err(Error("Failed to parse FileId path".to_owned())),
+            Err(_) => Err(MessageError::InvalidBin),
         }?;
 
         let mut xdata = [0u8; 32];
@@ -107,7 +109,7 @@ impl Argument for ChunkId {
         self.0.to_owned()
     }
 
-    fn from_bin(data: &[u8]) -> Result<Self, Error> {
+    fn from_bin(data: &[u8]) -> Result<Self, MessageError> {
         Ok(Self(data.to_vec()))
     }
 
@@ -145,7 +147,7 @@ impl Argument for QualifiedChunkId {
         buf
     }
 
-    fn from_bin(data: &[u8]) -> Result<Self, Error> {
+    fn from_bin(data: &[u8]) -> Result<Self, MessageError> {
         let mut buf = [0u8; 4];
         // Get size of path string
         buf.copy_from_slice(&data[..4]);
@@ -214,7 +216,7 @@ impl FileMetadata {
         file_id: FileId,
         metadata: Metadata,
         chunks: &[[u8; 32]],
-    ) -> Result<Self, io::Error> {
+    ) -> Result<Self, MessageError> {
         Ok(FileMetadata {
             file_name: file_id
                 .path
@@ -261,11 +263,11 @@ impl Argument for FileMetadata {
         buf
     }
 
-    fn from_bin(data: &[u8]) -> Result<Self, Error> {
+    fn from_bin(data: &[u8]) -> Result<Self, MessageError> {
         let mut buf = [0u8; 8];
         buf.copy_from_slice(&data[0..8]);
         let end = 8 + u64::from_be_bytes(buf) as usize;
-        let path = PathBuf::from(String::from_utf8(data[8..(end)].to_vec()).unwrap());
+        let path = PathBuf::from(String::from_utf8(data[8..(end)].to_vec())?);
 
         let mut buf = [0u8; 4];
         buf.copy_from_slice(&data[end..end + 4]);
@@ -323,7 +325,7 @@ impl Argument for FileList {
         files
     }
 
-    fn from_bin(data: &[u8]) -> Result<Self, Error> {
+    fn from_bin(data: &[u8]) -> Result<Self, MessageError> {
         let mut buf = [0u8; 2];
         let mut cur = 0;
         let mut files: Vec<FileId> = vec![];
@@ -334,12 +336,10 @@ impl Argument for FileList {
             let size = u16::from_be_bytes(buf);
 
             if data[cur..].len() < size.into() {
-                return Err(Error(
-                    "Invalid FileList format. Failed to convert from binary.".to_owned(),
-                ));
+                return Err(MessageError::InvalidBin);
             }
 
-            files.push(FileId::from_bin(&data[cur..(size + 2).into()])?);
+            files.push(FileId::from_bin(&data[cur..(cur + size as usize)])?);
             cur += size as usize;
         }
         Ok(FileList(files))
@@ -363,8 +363,8 @@ impl Argument for Chunk {
         buf
     }
 
-    fn from_bin(data: &[u8]) -> Result<Self, Error> {
-        let chunk_id = ChunkId::from_bin(&data[..32]).unwrap();
+    fn from_bin(data: &[u8]) -> Result<Self, MessageError> {
+        let chunk_id = ChunkId::from_bin(&data[..32])?;
         let chunk_data = data[32..].to_vec();
         Ok(Chunk {
             id: chunk_id,
@@ -392,11 +392,11 @@ impl Argument for QualifiedChunk {
         buf
     }
 
-    fn from_bin(data: &[u8]) -> Result<Self, Error> {
+    fn from_bin(data: &[u8]) -> Result<Self, MessageError> {
         let mut buf = [0u8; 8];
         buf.copy_from_slice(&data[..8]);
         let len = u64::from_be_bytes(buf) as usize;
-        let chunk_id = QualifiedChunkId::from_bin(&data[8..8 + len]).unwrap();
+        let chunk_id = QualifiedChunkId::from_bin(&data[8..8 + len])?;
         let chunk_data = data[8 + len..].to_vec();
         Ok(QualifiedChunk {
             id: chunk_id,
@@ -416,7 +416,7 @@ impl Argument for ResponseCode {
         self.0.to_be_bytes().to_vec()
     }
 
-    fn from_bin(data: &[u8]) -> Result<Self, Error> {
+    fn from_bin(data: &[u8]) -> Result<Self, MessageError> {
         let mut buf = [0u8; 2];
         buf.copy_from_slice(data);
         Ok(ResponseCode(u16::from_be_bytes(buf)))
@@ -435,7 +435,7 @@ impl Argument for Dummy {
         todo!()
     }
 
-    fn from_bin(data: &[u8]) -> Result<Self, Error>
+    fn from_bin(data: &[u8]) -> Result<Self, MessageError>
     where
         Self: Sized,
     {

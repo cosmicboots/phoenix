@@ -54,8 +54,11 @@
 #![allow(unused_variables)]
 
 pub mod arguments;
+pub mod error;
 
 use arguments::{Argument, Version};
+
+use self::error::MessageError;
 
 //struct Version(u8);
 
@@ -192,7 +195,7 @@ impl MessageBuilder {
         msg.into()
     }
 
-    pub fn decode_message(message: &[u8]) -> Result<Box<Message>, arguments::Error> {
+    pub fn decode_message(message: &[u8]) -> Result<Box<Message>, MessageError> {
         let msg = RawMessage::from(message);
 
         let mut arg: Option<Box<dyn Argument>> = None;

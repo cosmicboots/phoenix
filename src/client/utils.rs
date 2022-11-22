@@ -1,5 +1,5 @@
 use super::{file_operations::CHUNK_SIZE, Blacklist};
-use crate::messaging::arguments::{FileId, FileList, FileMetadata, QualifiedChunk};
+use crate::messaging::{arguments::{FileId, FileList, FileMetadata, QualifiedChunk}, error::MessageError};
 use std::{
     fs::{self, File},
     io::{self, Read, Seek, SeekFrom, Write},
@@ -55,7 +55,7 @@ pub fn write_chunk(
 }
 
 /// Get the file metadata from a file at a given path.
-pub fn get_file_info(path: &Path) -> Result<FileMetadata, std::io::Error> {
+pub fn get_file_info(path: &Path) -> Result<FileMetadata, MessageError> {
     let md = fs::metadata(path)?;
     let file_id = FileId::new(path.to_owned())?;
     let chunks = chunk_file(path)?;
@@ -65,11 +65,11 @@ pub fn get_file_info(path: &Path) -> Result<FileMetadata, std::io::Error> {
 /// Generate a file listing of the watched directory.
 ///
 /// This will be used to preform an initial synchronization when the clients connect.
-pub fn generate_file_list(path: &Path) -> Result<FileList, std::io::Error> {
+pub fn generate_file_list(path: &Path) -> Result<FileList, MessageError> {
     Ok(FileList(recursive_file_list(path, path)?))
 }
 
-fn recursive_file_list(base: &Path, path: &Path) -> Result<Vec<FileId>, std::io::Error> {
+fn recursive_file_list(base: &Path, path: &Path) -> Result<Vec<FileId>, MessageError> {
     let mut files: Vec<FileId> = vec![];
 
     for entry in fs::read_dir(path)? {
