@@ -1,6 +1,9 @@
+//! Network module errors
+
 use std::{error::Error, fmt::Display, io};
 
 #[derive(Debug)]
+/// Error type used by the `Net` module.
 pub enum NetError {
     /// Generic Noise Error
     Noise(String),

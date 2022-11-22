@@ -60,15 +60,19 @@ use error::NetError;
 
 static NOISE_PATTERN: &str = "Noise_IK_25519_ChaChaPoly_BLAKE2s";
 
+/// A generic trait that allows noise connections to be created and send/recieve information
 pub trait NoiseConnection {
     fn new(stream: TcpStream, static_key: &[u8], remote_keys: &[Vec<u8>]) -> Result<Self, NetError>
     where
         Self: Sized;
     fn send(&mut self, msg: &[u8]) -> Result<(), NetError>;
-    // TODO: A box probably isn't the best solution. Using for now.
     fn recv(&mut self) -> Result<Vec<u8>, NetError>;
 }
 
+/// The server side of the network connection
+///
+/// `NetServer` will be the responder in the Noise handshake while the
+/// [`NetClient`](struct.NetClient.html) will be the initiator.
 pub struct NetServer {
     stream: TcpStream,
     buf: Vec<u8>,
@@ -125,6 +129,10 @@ impl NoiseConnection for NetServer {
     }
 }
 
+/// The client side of the network connection
+///
+/// `NetClient` will be the initiator in the Noise handshake while the
+/// [`NetServer`](struct.NetServer.html) will be the responder.
 pub struct NetClient {
     stream: TcpStream,
     buf: Vec<u8>,
