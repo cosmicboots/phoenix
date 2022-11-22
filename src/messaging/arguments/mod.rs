@@ -19,13 +19,12 @@ use std::{
 #[derive(Debug, PartialEq, Eq)]
 pub struct Error(String);
 
-pub trait Argument: Debug + Send {
+pub trait Argument: Debug {
     fn to_bin(&self) -> Vec<u8>;
     fn from_bin(data: &[u8]) -> Result<Self, Error>
     where
         Self: Sized;
     fn as_any(&self) -> &dyn Any;
-    fn clone_dyn(&self) -> Box<dyn Argument>;
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
@@ -41,9 +40,6 @@ impl Argument for Version {
     }
     fn as_any(&self) -> &dyn Any {
         self
-    }
-    fn clone_dyn(&self) -> Box<dyn Argument> {
-        Box::new(self.clone())
     }
 }
 
@@ -101,9 +97,6 @@ impl Argument for FileId {
     fn as_any(&self) -> &dyn Any {
         self
     }
-    fn clone_dyn(&self) -> Box<dyn Argument> {
-        Box::new(self.clone())
-    }
 }
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Clone, Hash)]
@@ -120,9 +113,6 @@ impl Argument for ChunkId {
 
     fn as_any(&self) -> &dyn Any {
         self
-    }
-    fn clone_dyn(&self) -> Box<dyn Argument> {
-        Box::new(self.clone())
     }
 }
 
@@ -172,9 +162,6 @@ impl Argument for QualifiedChunkId {
 
     fn as_any(&self) -> &dyn Any {
         self
-    }
-    fn clone_dyn(&self) -> Box<dyn Argument> {
-        Box::new(self.clone())
     }
 }
 
@@ -318,12 +305,9 @@ impl Argument for FileMetadata {
     fn as_any(&self) -> &dyn Any {
         self
     }
-    fn clone_dyn(&self) -> Box<dyn Argument> {
-        Box::new(self.clone())
-    }
 }
 
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct FileList(pub Vec<FileId>);
 
 impl Argument for FileList {
@@ -364,12 +348,9 @@ impl Argument for FileList {
     fn as_any(&self) -> &dyn Any {
         self
     }
-    fn clone_dyn(&self) -> Box<dyn Argument> {
-        Box::new(self.clone())
-    }
 }
 
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct Chunk {
     pub id: ChunkId,
     pub data: Vec<u8>,
@@ -394,12 +375,9 @@ impl Argument for Chunk {
     fn as_any(&self) -> &dyn Any {
         self
     }
-    fn clone_dyn(&self) -> Box<dyn Argument> {
-        Box::new(self.clone())
-    }
 }
 
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct QualifiedChunk {
     pub id: QualifiedChunkId,
     pub data: Vec<u8>,
@@ -429,11 +407,8 @@ impl Argument for QualifiedChunk {
     fn as_any(&self) -> &dyn Any {
         self
     }
-    fn clone_dyn(&self) -> Box<dyn Argument> {
-        Box::new(self.clone())
-    }
 }
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct ResponseCode(u16);
 
 impl Argument for ResponseCode {
@@ -450,13 +425,9 @@ impl Argument for ResponseCode {
     fn as_any(&self) -> &dyn Any {
         self
     }
-
-    fn clone_dyn(&self) -> Box<dyn Argument> {
-        Box::new(self.clone())
-    }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct Dummy {}
 
 impl Argument for Dummy {
@@ -473,9 +444,5 @@ impl Argument for Dummy {
 
     fn as_any(&self) -> &dyn Any {
         todo!()
-    }
-
-    fn clone_dyn(&self) -> Box<dyn Argument> {
-        Box::new(self.clone())
     }
 }

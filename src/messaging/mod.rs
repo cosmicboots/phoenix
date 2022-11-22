@@ -104,19 +104,6 @@ pub struct Message {
     pub argument: Option<Box<dyn Argument>>,
 }
 
-impl Clone for Message {
-    fn clone(&self) -> Self {
-        Self {
-            id: self.id.clone(),
-            verb: self.verb.clone(),
-            argument: match &self.argument {
-                Some(x) => Some(x.clone_dyn()),
-                None => None,
-            },
-        }
-    }
-}
-
 #[derive(PartialEq, Debug)]
 struct RawMessage {
     id: u16,
