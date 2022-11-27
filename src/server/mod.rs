@@ -1,5 +1,10 @@
 mod db;
 
+use super::{
+    config::{Config, ServerConfig},
+    messaging::MessageBuilder,
+    net::{NetServer, NoiseConnection},
+};
 use crate::{
     client::CHUNK_SIZE,
     messaging::{
@@ -9,12 +14,6 @@ use crate::{
 };
 use base64ct::{Base64, Encoding};
 use db::Db;
-
-use super::{
-    config::{Config, ServerConfig},
-    messaging::MessageBuilder,
-    net::{NetServer, NoiseConnection},
-};
 use std::{path::Path, sync::Arc, time::Duration};
 use tokio::{
     net::TcpListener,
@@ -77,7 +76,7 @@ pub async fn start_server(config_file: &Path) {
         println!("Spawning connection...");
 
         // Create channel to to recieve push events
-        let (msg_tx, msg_rx): (Sender<Vec<u8>>, Receiver<Vec<u8>>) = mpsc::channel(100);
+        let (msg_tx, mut msg_rx): (Sender<Vec<u8>>, Receiver<Vec<u8>>) = mpsc::channel(100);
         debug!("threads_tx still alive: {:?}", threads_tx);
         threads_tx.send(msg_tx).await.unwrap();
 
@@ -86,9 +85,6 @@ pub async fn start_server(config_file: &Path) {
         let db = db.clone();
         let broadcast = broadcast_tx.clone();
         tokio::spawn(async move {
-            // TODO: Handle broadcast messages
-            let _bcast_rx = msg_rx;
-
             // Create new Server for use with noise layer
             let mut svc = NetServer::new(
                 stream,
@@ -103,92 +99,27 @@ pub async fn start_server(config_file: &Path) {
             .unwrap();
             info!("Connection established!");
 
-            while let Ok(raw_msg) = &svc.recv().await {
-                let mut msg_builder = MessageBuilder::new(1);
-                let msg = MessageBuilder::decode_message(raw_msg).unwrap();
-                msg_builder.increment_counter();
-                match msg.verb {
-                    Directive::SendFile => {
-                        let argument = msg.argument.unwrap();
-                        let metadata = argument.as_any().downcast_ref::<FileMetadata>().unwrap();
-                        //let file_id = metadata.file_id.clone();
-                        let chunks = db
-                            .add_file(metadata)
-                            .expect("Failed to add file to database");
-
-                        for (i, chunk) in chunks.iter().enumerate() {
-                            let qualified_chunk = QualifiedChunkId {
-                                path: metadata.file_id.clone(),
-                                offset: (i * CHUNK_SIZE) as u32,
-                                id: chunk.clone(),
-                            };
-                            let msg = msg_builder
-                                .encode_message(Directive::RequestChunk, Some(qualified_chunk));
-                            let _ = &svc.send(&msg).await;
+            //while let Ok(raw_msg) = &svc.recv().await {}
+            let mut msg_builder = MessageBuilder::new(1);
+            loop {
+                select! {
+                    // Messages from the client
+                    raw_msg = svc.recv() => {
+                        match raw_msg {
+                            Ok(msg) => {
+                                handle_client_msg(&mut svc,
+                                    &db,
+                                    &mut msg_builder,
+                                    &broadcast,
+                                    &msg).await;
+                            },
+                            Err(_) => break,
                         }
                     }
-                    Directive::SendChunk => {
-                        let complete = db
-                            .add_chunk(
-                                msg.argument
-                                    .unwrap()
-                                    .as_any()
-                                    .downcast_ref::<Chunk>()
-                                    .unwrap(),
-                            )
-                            .expect("Failed to add chunk to database");
-
-                        // If the file is complete, broadcast a fake `SendFile` message for every
-                        // thread to forward to the client
-                        if let Some(id) = complete {
-                            broadcast
-                                .send(msg_builder.encode_message(Directive::SendFile, Some(id)))
-                                .await
-                                .unwrap();
-                        }
+                    // Messages from the broadcast system
+                    msg = msg_rx.recv() => {
+                        svc.send(&msg.unwrap()).await.unwrap();
                     }
-                    Directive::ListFiles => {
-                        let files = db.get_files().unwrap();
-                        debug!("Sending file list to client");
-                        let msg = msg_builder.encode_message(Directive::SendFiles, Some(files));
-                        let _ = &svc.send(&msg).await;
-                    }
-                    Directive::RequestFile => {
-                        let argument = msg.argument.unwrap();
-                        let file_id = argument.as_any().downcast_ref::<FileId>().unwrap();
-                        let file = db
-                            .get_file(file_id.path.to_str().unwrap())
-                            .unwrap()
-                            .unwrap();
-                        let msg = msg_builder.encode_message(Directive::SendFile, Some(file));
-                        let _ = &svc.send(&msg).await;
-                    }
-                    Directive::RequestChunk => {
-                        let argument = msg.argument.unwrap();
-                        let chunk_id = argument
-                            .as_any()
-                            .downcast_ref::<QualifiedChunkId>()
-                            .unwrap();
-                        let mut buf = [0u8; 32];
-                        buf.copy_from_slice(&chunk_id.id.0);
-                        let chunk = db.get_chunk(buf).unwrap();
-                        let q_chunk = QualifiedChunk {
-                            id: chunk_id.clone(),
-                            data: chunk.data,
-                        };
-                        let msg = msg_builder.encode_message::<QualifiedChunk>(
-                            Directive::SendQualifiedChunk,
-                            Some(q_chunk),
-                        );
-                        let _ = &svc.send(&msg).await;
-                    }
-                    Directive::DeleteFile => {
-                        let argument = msg.argument.unwrap();
-                        let file_path = argument.as_any().downcast_ref::<FilePath>().unwrap();
-                        db.rm_file(file_path);
-                        debug!("Removed {:?} from the database", file_path);
-                    }
-                    _ => todo!(),
                 }
             }
             info!("Client disconnected");
@@ -200,4 +131,95 @@ pub fn dump_data(config_file: &Path) {
     let config = Arc::new(ServerConfig::read_config(config_file).expect("Bad config"));
     let db = Db::new(&config.storage_path).expect("Failed to open database");
     db.dump_tree();
+}
+
+async fn handle_client_msg(
+    svc: &mut NetServer,
+    db: &Db,
+    msg_builder: &mut MessageBuilder,
+    broadcast: &Sender<Vec<u8>>,
+    raw_msg: &[u8],
+) {
+    let msg = MessageBuilder::decode_message(raw_msg).unwrap();
+    msg_builder.increment_counter();
+    match msg.verb {
+        Directive::SendFile => {
+            let argument = msg.argument.unwrap();
+            let metadata = argument.as_any().downcast_ref::<FileMetadata>().unwrap();
+            //let file_id = metadata.file_id.clone();
+            let chunks = db
+                .add_file(metadata)
+                .expect("Failed to add file to database");
+
+            for (i, chunk) in chunks.iter().enumerate() {
+                let qualified_chunk = QualifiedChunkId {
+                    path: metadata.file_id.clone(),
+                    offset: (i * CHUNK_SIZE) as u32,
+                    id: chunk.clone(),
+                };
+                let msg =
+                    msg_builder.encode_message(Directive::RequestChunk, Some(qualified_chunk));
+                let _ = &svc.send(&msg).await;
+            }
+        }
+        Directive::SendChunk => {
+            let complete = db
+                .add_chunk(
+                    msg.argument
+                        .unwrap()
+                        .as_any()
+                        .downcast_ref::<Chunk>()
+                        .unwrap(),
+                )
+                .expect("Failed to add chunk to database");
+
+            // If the file is complete, broadcast a fake `SendFile` message for every
+            // thread to forward to the client
+            if let Some(id) = complete {
+                let file_md = db.get_file(id.path.to_str().unwrap()).unwrap().unwrap();
+                let rmsg = msg_builder.encode_message(Directive::SendFile, Some(file_md));
+                broadcast.send(rmsg).await.unwrap();
+            }
+        }
+        Directive::ListFiles => {
+            let files = db.get_files().unwrap();
+            debug!("Sending file list to client");
+            let msg = msg_builder.encode_message(Directive::SendFiles, Some(files));
+            let _ = &svc.send(&msg).await;
+        }
+        Directive::RequestFile => {
+            let argument = msg.argument.unwrap();
+            let file_id = argument.as_any().downcast_ref::<FileId>().unwrap();
+            let file = db
+                .get_file(file_id.path.to_str().unwrap())
+                .unwrap()
+                .unwrap();
+            let msg = msg_builder.encode_message(Directive::SendFile, Some(file));
+            let _ = &svc.send(&msg).await;
+        }
+        Directive::RequestChunk => {
+            let argument = msg.argument.unwrap();
+            let chunk_id = argument
+                .as_any()
+                .downcast_ref::<QualifiedChunkId>()
+                .unwrap();
+            let mut buf = [0u8; 32];
+            buf.copy_from_slice(&chunk_id.id.0);
+            let chunk = db.get_chunk(buf).unwrap();
+            let q_chunk = QualifiedChunk {
+                id: chunk_id.clone(),
+                data: chunk.data,
+            };
+            let msg = msg_builder
+                .encode_message::<QualifiedChunk>(Directive::SendQualifiedChunk, Some(q_chunk));
+            let _ = &svc.send(&msg).await;
+        }
+        Directive::DeleteFile => {
+            let argument = msg.argument.unwrap();
+            let file_path = argument.as_any().downcast_ref::<FilePath>().unwrap();
+            db.rm_file(file_path);
+            debug!("Removed {:?} from the database", file_path);
+        }
+        _ => todo!(),
+    }
 }

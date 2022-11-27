@@ -68,8 +68,10 @@ pub async fn start_client(config_file: &Path, path: &Path) {
         select! {
             // Server messages
             push = (&mut client).recv() => {
-                let msg = MessageBuilder::decode_message(&push.unwrap()).unwrap();
-                handle_server_event(&mut client, &watch_path, *msg, &mut blacklist).await;
+                match MessageBuilder::decode_message(&push.unwrap()) {
+                    Ok(msg) => handle_server_event(&mut client, &watch_path, *msg, &mut blacklist).await,
+                    Err(e) => error!("msg decode error: {:?}", e),
+                } 
             }
             // Filesystem messages
             event = fs_event.recv() => {
@@ -121,7 +123,7 @@ async fn handle_server_event(
             }
             for file in server_files.difference(&local_files) {
                 debug!("File not found locally: {:?}", file.path);
-                let _ = client.request_file(file.clone());
+                let _ = client.request_file(file.clone()).await;
             }
         }
         messaging::Directive::RequestFile => todo!(),
@@ -145,10 +147,6 @@ async fn handle_server_event(
                 // The blacklist needs to be updated to make sure we dont send file information for
                 // a in progress transfer
                 blacklist.insert(path, file_md.clone());
-                debug!(
-                    "Added file to watcher blacklist. Current list: {:?}",
-                    blacklist
-                );
                 let mut _file = File::create(watch_path.join(&file_md.file_id.path)).unwrap();
                 info!("Started file download: {:?}", &file_md.file_id.path);
                 for (i, chunk) in file_md.chunks.iter().enumerate() {
