@@ -52,8 +52,7 @@ pub async fn start_client(config_file: &Path, path: &Path) {
 
     let (tx, rx) = std::sync::mpsc::channel();
     let mut watcher = watcher(tx, Duration::from_secs(1)).unwrap();
-    let (tx, mut fs_event): (Sender<DebouncedEvent>, Receiver<DebouncedEvent>) =
-        mpsc::channel(100);
+    let (tx, mut fs_event): (Sender<DebouncedEvent>, Receiver<DebouncedEvent>) = mpsc::channel(100);
     thread::spawn(move || {
         tokio::runtime::Builder::new_current_thread()
             .enable_all()
@@ -182,7 +181,13 @@ async fn handle_server_event(
                 }
             }
         }
-        messaging::Directive::DeleteFile => todo!(),
+        messaging::Directive::DeleteFile => {
+            if let Some(argument) = event.argument {
+                let fpath = argument.as_any().downcast_ref::<FilePath>().unwrap();
+                debug!("Got file deletion of {:?}", fpath);
+                let _ = tokio::fs::remove_file(watch_path.join(&fpath.0)).await;
+            }
+        }
         _ => {}
     };
 }

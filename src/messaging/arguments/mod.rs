@@ -101,7 +101,7 @@ impl Argument for FileId {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct FilePath(pub String);
 
 impl Argument for FilePath {

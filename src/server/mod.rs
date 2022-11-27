@@ -231,6 +231,8 @@ async fn handle_client_msg(
             let file_path = argument.as_any().downcast_ref::<FilePath>().unwrap();
             db.rm_file(file_path);
             debug!("Removed {:?} from the database", file_path);
+            let rmsg = msg_builder.encode_message(Directive::DeleteFile, Some(file_path.clone()));
+            broadcast.send(rmsg).await.unwrap();
         }
         _ => todo!(),
     }
