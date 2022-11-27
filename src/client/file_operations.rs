@@ -1,22 +1,16 @@
 use crate::{
     client::utils::get_file_info,
-    client::QueueItem,
     messaging::{
         arguments::{self, Argument, ChunkId, FileId, FilePath, QualifiedChunkId},
         Directive, MessageBuilder,
     },
-    net::{NetClient, NoiseConnection},
+    net::{error::NetError, NetClient, NoiseConnection},
 };
 use std::{
     error::Error,
     fs::File,
     io::{Read, Seek, SeekFrom},
     path::Path,
-    sync::Arc,
-};
-use tokio::sync::{
-    mpsc::{self, error::SendError, Receiver, Sender},
-    Mutex,
 };
 
 pub const CHUNK_SIZE: usize = 1024; // 8 byte chunk size. TODO: automatically determine this.
@@ -28,29 +22,23 @@ pub const CHUNK_SIZE: usize = 1024; // 8 byte chunk size. TODO: automatically de
 /// high level.
 pub struct Client {
     builder: MessageBuilder,
-    msg_queue_tx: Sender<Vec<u8>>,
+    net_client: NetClient,
 }
 
 impl Client {
-    pub fn new(
-        builder: MessageBuilder,
-        net_client: NetClient,
-        msg_queue: Sender<QueueItem>,
-    ) -> Self {
-        let net_client = Arc::new(Mutex::new(net_client));
+    pub fn new(builder: MessageBuilder, net_client: NetClient) -> Self {
+        //let (tx, mut rx): (Sender<Vec<u8>>, Receiver<Vec<u8>>) = mpsc::channel(100);
+        //let client = net_client.clone();
+        //tokio::spawn(async move {
+        //    while let Some(data) = rx.recv().await {
+        //        if let Err(e) = client.lock().await.send(&data).await {
+        //            // TODO: handle errors. Possibly requeue them
+        //            error!("Failed to process msg_queue: {:?}", e);
+        //        };
+        //    }
+        //});
 
-        let (tx, mut rx): (Sender<Vec<u8>>, Receiver<Vec<u8>>) = mpsc::channel(100);
-        let client = net_client.clone();
-        tokio::spawn(async move {
-            while let Some(data) = rx.recv().await {
-                if let Err(e) = client.lock().await.send(&data).await {
-                    // TODO: handle errors. Possibly requeue them
-                    error!("Failed to process msg_queue: {:?}", e);
-                };
-            }
-        });
-
-        //let mut raw_stream = net_client.lock().unwrap().clone_stream().unwrap();
+        //let mut raw_stream = net_client.lock().await.clone_stream().unwrap();
         //let client = net_client;
         //tokio::spawn(async move {
         //    while let Ok(raw_msg) = net::recv(&mut raw_stream).await {
@@ -62,7 +50,7 @@ impl Client {
 
         Client {
             builder,
-            msg_queue_tx: tx,
+            net_client,
         }
     }
 
@@ -73,7 +61,7 @@ impl Client {
         let msg = self
             .builder
             .encode_message(Directive::SendFile, Some(file_info));
-        self.msg_queue_tx.send(msg).await?;
+        self.net_client.send(&msg).await?;
         Ok(())
     }
 
@@ -109,7 +97,7 @@ impl Client {
             let msg = self
                 .builder
                 .encode_message(Directive::SendChunk, Some(chunk));
-            self.msg_queue_tx.send(msg).await?;
+            self.net_client.send(&msg).await?;
         } else {
             panic!("Chunks don't match up. File must have changed. This error will be handled in the future")
         }
@@ -117,35 +105,36 @@ impl Client {
         Ok(())
     }
 
-    pub async fn request_chunk(
-        &mut self,
-        chunk: QualifiedChunkId,
-    ) -> Result<(), SendError<Vec<u8>>> {
+    pub async fn request_chunk(&mut self, chunk: QualifiedChunkId) -> Result<(), NetError> {
         let msg = self
             .builder
             .encode_message::<arguments::QualifiedChunkId>(Directive::RequestChunk, Some(chunk));
-        self.msg_queue_tx.send(msg).await
+        self.net_client.send(&msg).await
     }
 
-    pub async fn request_file_list(&mut self) -> Result<(), Box<dyn Error>> {
+    pub async fn request_file_list(&mut self) -> Result<(), NetError> {
         let msg = self
             .builder
             .encode_message::<arguments::Dummy>(Directive::ListFiles, None);
-        self.msg_queue_tx.send(msg).await?;
-        Ok(())
+        self.net_client.send(&msg).await
     }
 
-    pub async fn request_file(&mut self, file: FileId) -> Result<(), SendError<Vec<u8>>> {
+    pub async fn request_file(&mut self, file: FileId) -> Result<(), NetError> {
         let msg = self
             .builder
             .encode_message(Directive::RequestFile, Some(file));
-        self.msg_queue_tx.send(msg).await
+        self.net_client.send(&msg).await
     }
 
-    pub async fn delete_file(&mut self, file_path: FilePath) -> Result<(), SendError<Vec<u8>>> {
+    pub async fn delete_file(&mut self, file_path: FilePath) -> Result<(), NetError> {
         let msg = self
             .builder
             .encode_message(Directive::DeleteFile, Some(file_path));
-        self.msg_queue_tx.send(msg).await
+        self.net_client.send(&msg).await
+    }
+
+    pub async fn recv(&mut self) -> Result<Vec<u8>, NetError> {
+        let ret = self.net_client.recv().await;
+        ret
     }
 }

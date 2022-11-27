@@ -18,6 +18,7 @@ use std::{
 };
 use tokio::{
     net::TcpStream,
+    select,
     sync::mpsc::{self, Receiver, Sender},
 };
 
@@ -27,12 +28,6 @@ mod utils;
 pub use file_operations::CHUNK_SIZE;
 
 pub type Blacklist = HashMap<PathBuf, FileMetadata>;
-
-#[derive(Debug)]
-pub enum QueueItem {
-    ServerMsg(Vec<u8>),
-    FileMsg(DebouncedEvent),
-}
 
 pub async fn start_client(config_file: &Path, path: &Path) {
     let config = ClientConfig::read_config(config_file).unwrap();
@@ -45,52 +40,47 @@ pub async fn start_client(config_file: &Path, path: &Path) {
     .await
     .unwrap();
 
-    let (msg_queue, mut incoming_msg): (Sender<QueueItem>, Receiver<QueueItem>) =
-        mpsc::channel(100);
-
     let builder = messaging::MessageBuilder::new(1);
-    let mut client = Client::new(builder, net_client, msg_queue.clone());
+    let mut client = Client::new(builder, net_client);
 
     let watch_path = PathBuf::from(path);
-
     if !fs::metadata(&watch_path).unwrap().is_dir() {
         error!("Can only watch directories not files!");
         std::process::exit(1);
     }
 
-    let (tx, rx) = std::sync::mpsc::channel();
+    let (tx, _rx) = std::sync::mpsc::channel();
     let mut watcher = watcher(tx, Duration::from_secs(1)).unwrap();
-    let tx = msg_queue;
-    tokio::spawn(async move {
-        while let Ok(x) = rx.recv() {
-            let _ = tx.send(QueueItem::FileMsg(x));
-        }
-    });
+    // TODO: figure out async filesystem watching
+    let (_tx, mut fs_event): (Sender<DebouncedEvent>, Receiver<DebouncedEvent>) =
+        mpsc::channel(100);
 
     info!("Watching files");
     watcher
         .watch(&watch_path, notify::RecursiveMode::Recursive)
         .unwrap();
 
+    // Get startup file list to compare against local file tree
     client.request_file_list().await.unwrap();
 
     let mut blacklist: Blacklist = HashMap::new();
     loop {
-        if let Some(msg) = incoming_msg.recv().await {
-            match msg {
-                QueueItem::ServerMsg(push) => {
-                    // TODO: decrypt this message using noise
-                    let msg = MessageBuilder::decode_message(&push).unwrap();
-                    handle_server_event(&mut client, &watch_path, *msg, &mut blacklist).await;
-                }
-                QueueItem::FileMsg(event) => {
+        select! {
+            // Server messages
+            push = (&mut client).recv() => {
+                let msg = MessageBuilder::decode_message(&push.unwrap()).unwrap();
+                handle_server_event(&mut client, &watch_path, *msg, &mut blacklist).await;
+            }
+            // Filesystem messages
+            event = fs_event.recv() => {
+                if event.is_some() {
                     handle_fs_event(
                         &mut client,
                         &watch_path.canonicalize().unwrap(),
-                        event,
-                        &mut blacklist,
-                    )
-                    .await;
+                        event.unwrap(),
+                        &mut blacklist).await;
+                } else {
+                    debug!("Failing fs_event checking");
                 }
             }
         }

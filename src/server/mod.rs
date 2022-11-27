@@ -109,7 +109,7 @@ pub async fn start_server(config_file: &Path) {
                 msg_builder.increment_counter();
                 match msg.verb {
                     Directive::SendFile => {
-                        let argument = &msg.argument.unwrap();
+                        let argument = msg.argument.unwrap();
                         let metadata = argument.as_any().downcast_ref::<FileMetadata>().unwrap();
                         //let file_id = metadata.file_id.clone();
                         let chunks = db
@@ -124,7 +124,7 @@ pub async fn start_server(config_file: &Path) {
                             };
                             let msg = msg_builder
                                 .encode_message(Directive::RequestChunk, Some(qualified_chunk));
-                            let _ = &svc.send(&msg);
+                            let _ = &svc.send(&msg).await;
                         }
                     }
                     Directive::SendChunk => {
@@ -151,7 +151,7 @@ pub async fn start_server(config_file: &Path) {
                         let files = db.get_files().unwrap();
                         debug!("Sending file list to client");
                         let msg = msg_builder.encode_message(Directive::SendFiles, Some(files));
-                        let _ = &svc.send(&msg);
+                        let _ = &svc.send(&msg).await;
                     }
                     Directive::RequestFile => {
                         let argument = msg.argument.unwrap();
@@ -161,7 +161,7 @@ pub async fn start_server(config_file: &Path) {
                             .unwrap()
                             .unwrap();
                         let msg = msg_builder.encode_message(Directive::SendFile, Some(file));
-                        let _ = &svc.send(&msg);
+                        let _ = &svc.send(&msg).await;
                     }
                     Directive::RequestChunk => {
                         let argument = msg.argument.unwrap();
@@ -180,7 +180,7 @@ pub async fn start_server(config_file: &Path) {
                             Directive::SendQualifiedChunk,
                             Some(q_chunk),
                         );
-                        let _ = &svc.send(&msg);
+                        let _ = &svc.send(&msg).await;
                     }
                     Directive::DeleteFile => {
                         let argument = msg.argument.unwrap();

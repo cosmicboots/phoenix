@@ -1,4 +1,3 @@
-#![allow(dead_code)]
 //! Network module. Main purpose is to wrap traffic in the noise protocol.
 //!
 //! This is only a lightweight wrapper for handling noise protocol connections using Snow.
@@ -141,22 +140,6 @@ pub struct NetClient {
     stream: TcpStream,
     buf: Vec<u8>,
     noise: TransportState,
-}
-
-impl NetClient {
-    pub fn read_raw(&mut self, raw_msg: &[u8]) -> Result<Vec<u8>, NetError> {
-        let len = self.noise.read_message(raw_msg, &mut self.buf)?;
-        Ok(self.buf[..len].to_vec())
-    }
-
-    //pub fn clone_stream(&self) -> Result<TcpStream, NetError> {
-    //    Ok(self.stream.split()?)
-    //}
-
-    pub fn decrypt(&mut self, msg: &[u8]) -> Result<Vec<u8>, NetError> {
-        let len = self.noise.read_message(msg, &mut self.buf)?;
-        Ok(self.buf[..len].to_vec())
-    }
 }
 
 #[async_trait]
