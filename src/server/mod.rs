@@ -151,7 +151,7 @@ async fn handle_client_msg(
 
             let chunks = match db.add_file(metadata) {
                 Ok(x) => {
-                    if x.len() == 0 {
+                    if x.is_empty() {
                         // File is already completed
                         let rmsg =
                             msg_builder.encode_message(Directive::SendFile, Some(metadata.clone()));

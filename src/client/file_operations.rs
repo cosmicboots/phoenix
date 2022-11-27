@@ -113,7 +113,6 @@ impl Client {
     }
 
     pub async fn recv(&mut self) -> Result<Vec<u8>, NetError> {
-        let ret = self.net_client.recv().await;
-        ret
+        self.net_client.recv().await
     }
 }
