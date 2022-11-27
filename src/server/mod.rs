@@ -13,6 +13,7 @@ use crate::{
     },
 };
 use base64ct::{Base64, Encoding};
+use db::error::DbError;
 use db::Db;
 use std::{path::Path, sync::Arc, time::Duration};
 use tokio::{
@@ -147,9 +148,20 @@ async fn handle_client_msg(
             let argument = msg.argument.unwrap();
             let metadata = argument.as_any().downcast_ref::<FileMetadata>().unwrap();
             //let file_id = metadata.file_id.clone();
-            let chunks = db
-                .add_file(metadata)
-                .expect("Failed to add file to database");
+
+            let chunks = match db.add_file(metadata) {
+                Ok(x) => {
+                    if x.len() == 0 {
+                        // File is already completed
+                        let rmsg =
+                            msg_builder.encode_message(Directive::SendFile, Some(metadata.clone()));
+                        broadcast.send(rmsg).await.unwrap();
+                    }
+                    x
+                }
+                Err(DbError::DuplicateFile) => vec![],
+                Err(_) => panic!("Failed to add file to database"),
+            };
 
             for (i, chunk) in chunks.iter().enumerate() {
                 let qualified_chunk = QualifiedChunkId {

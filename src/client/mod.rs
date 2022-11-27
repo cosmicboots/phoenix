@@ -14,6 +14,7 @@ use std::{
     collections::{HashMap, HashSet},
     fs::{self, File},
     path::{Path, PathBuf},
+    thread,
     time::Duration,
 };
 use tokio::{
@@ -49,11 +50,21 @@ pub async fn start_client(config_file: &Path, path: &Path) {
         std::process::exit(1);
     }
 
-    let (tx, _rx) = std::sync::mpsc::channel();
+    let (tx, rx) = std::sync::mpsc::channel();
     let mut watcher = watcher(tx, Duration::from_secs(1)).unwrap();
-    // TODO: figure out async filesystem watching
-    let (_tx, mut fs_event): (Sender<DebouncedEvent>, Receiver<DebouncedEvent>) =
+    let (tx, mut fs_event): (Sender<DebouncedEvent>, Receiver<DebouncedEvent>) =
         mpsc::channel(100);
+    thread::spawn(move || {
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(async {
+                while let Ok(x) = rx.recv() {
+                    tx.send(x).await.unwrap();
+                }
+            });
+    });
 
     info!("Watching files");
     watcher
@@ -71,7 +82,7 @@ pub async fn start_client(config_file: &Path, path: &Path) {
                 match MessageBuilder::decode_message(&push.unwrap()) {
                     Ok(msg) => handle_server_event(&mut client, &watch_path, *msg, &mut blacklist).await,
                     Err(e) => error!("msg decode error: {:?}", e),
-                } 
+                }
             }
             // Filesystem messages
             event = fs_event.recv() => {
@@ -146,6 +157,7 @@ async fn handle_server_event(
                 let path = file_md.file_id.path.clone();
                 // The blacklist needs to be updated to make sure we dont send file information for
                 // a in progress transfer
+                debug!("adding to blacklist");
                 blacklist.insert(path, file_md.clone());
                 let mut _file = File::create(watch_path.join(&file_md.file_id.path)).unwrap();
                 info!("Started file download: {:?}", &file_md.file_id.path);

@@ -27,27 +27,6 @@ pub struct Client {
 
 impl Client {
     pub fn new(builder: MessageBuilder, net_client: NetClient) -> Self {
-        //let (tx, mut rx): (Sender<Vec<u8>>, Receiver<Vec<u8>>) = mpsc::channel(100);
-        //let client = net_client.clone();
-        //tokio::spawn(async move {
-        //    while let Some(data) = rx.recv().await {
-        //        if let Err(e) = client.lock().await.send(&data).await {
-        //            // TODO: handle errors. Possibly requeue them
-        //            error!("Failed to process msg_queue: {:?}", e);
-        //        };
-        //    }
-        //});
-
-        //let mut raw_stream = net_client.lock().await.clone_stream().unwrap();
-        //let client = net_client;
-        //tokio::spawn(async move {
-        //    while let Ok(raw_msg) = net::recv(&mut raw_stream).await {
-        //        if let Ok(msg) = client.lock().unwrap().decrypt(&raw_msg) {
-        //            msg_queue.send(QueueItem::ServerMsg(msg)).unwrap();
-        //        }
-        //    }
-        //});
-
         Client {
             builder,
             net_client,

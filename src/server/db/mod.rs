@@ -2,15 +2,18 @@
 
 #![allow(dead_code)]
 
+pub mod error;
+
 use base64ct::{Base64, Encoding};
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use sled::{
-    transaction::{ConflictableTransactionResult, TransactionalTree},
+    transaction::{ConflictableTransactionResult, TransactionalTree, ConflictableTransactionError, TransactionError},
     IVec, Transactional, Tree,
 };
 use std::{collections::HashSet, fmt::Write, path::Path, vec};
-
 use crate::messaging::arguments::{Chunk, ChunkId, FileId, FileList, FileMetadata, FilePath};
+
+use self::error::DbError;
 
 /// Static name of the file_table
 static FILE_TABLE: &str = "file_table";
@@ -87,13 +90,13 @@ impl Db {
     ///
     /// The new chunks are then inserted into the database, and the chunks no longer used are
     /// removed.
-    pub fn add_file(&self, file: &FileMetadata) -> sled::Result<Vec<ChunkId>> {
+    pub fn add_file(&self, file: &FileMetadata) -> Result<Vec<ChunkId>, DbError> {
         let value = match bincode::serialize(&file) {
             Ok(x) => x,
             Err(_) => panic!("Couldn't serialize file to store in database"),
         };
         // TODO: Improve error handling
-        let chunks: Vec<ChunkId> = (
+        let chunks: Vec<ChunkId> = match (
             &self.file_table,
             &self.pending_table,
             &self.chunk_count,
@@ -108,7 +111,7 @@ impl Db {
                     TransactionalTree,
                     TransactionalTree,
                 )|
-                 -> ConflictableTransactionResult<Vec<ChunkId>, sled::Error> {
+                 -> ConflictableTransactionResult<Vec<ChunkId>, DbError> {
                     let mut insert_chunks = file.chunks.clone();
                     let mut new_chunks = vec![];
 
@@ -118,7 +121,7 @@ impl Db {
                         if old_file == *file {
                             // The file is the same as the old
                             warn!("Duplicate file attempted to add to the file store");
-                            return Ok(vec![]);
+                            return Err(ConflictableTransactionError::Abort(DbError::DuplicateFile));
                         } else {
                             debug!("Updating file: {:?}", file.file_id.path);
                             let mut old_chunks = HashSet::new();
@@ -182,9 +185,14 @@ impl Db {
                     }
                     Ok(new_chunks)
                 },
-            )
-            .unwrap();
-
+            ) {
+                Ok(x) => x,
+                Err(TransactionError::Abort(e)) => {
+                    return Err(e);
+                }
+                // TODO: Fix this error handling
+                _ => panic!("Database operation failed"),
+            };
         Ok(chunks)
     }
 
