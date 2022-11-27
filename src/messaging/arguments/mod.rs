@@ -18,7 +18,7 @@ use std::{
 
 use super::error::MessageError;
 
-pub trait Argument: Debug {
+pub trait Argument: Debug + Send {
     fn to_bin(&self) -> Vec<u8>;
     fn from_bin(data: &[u8]) -> Result<Self, MessageError>
     where

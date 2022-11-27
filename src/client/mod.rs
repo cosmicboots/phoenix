@@ -13,11 +13,12 @@ use notify::{watcher, DebouncedEvent, Watcher};
 use std::{
     collections::{HashMap, HashSet},
     fs::{self, File},
-    net::TcpStream,
     path::{Path, PathBuf},
-    sync::mpsc::{self, Receiver, Sender},
-    thread,
     time::Duration,
+};
+use tokio::{
+    net::TcpStream,
+    sync::mpsc::{self, Receiver, Sender},
 };
 
 mod file_operations;
@@ -33,17 +34,19 @@ pub enum QueueItem {
     FileMsg(DebouncedEvent),
 }
 
-pub fn start_client(config_file: &Path, path: &Path) {
+pub async fn start_client(config_file: &Path, path: &Path) {
     let config = ClientConfig::read_config(config_file).unwrap();
 
     let net_client = NetClient::new(
-        TcpStream::connect(config.server_address).unwrap(),
+        TcpStream::connect(config.server_address).await.unwrap(),
         &Base64::decode_vec(&config.privkey).unwrap(),
         &[Base64::decode_vec(&config.server_pubkey).unwrap()],
     )
+    .await
     .unwrap();
 
-    let (msg_queue, incoming_msg): (Sender<QueueItem>, Receiver<QueueItem>) = mpsc::channel();
+    let (msg_queue, mut incoming_msg): (Sender<QueueItem>, Receiver<QueueItem>) =
+        mpsc::channel(100);
 
     let builder = messaging::MessageBuilder::new(1);
     let mut client = Client::new(builder, net_client, msg_queue.clone());
@@ -55,12 +58,12 @@ pub fn start_client(config_file: &Path, path: &Path) {
         std::process::exit(1);
     }
 
-    let (tx, rx) = mpsc::channel();
+    let (tx, rx) = std::sync::mpsc::channel();
     let mut watcher = watcher(tx, Duration::from_secs(1)).unwrap();
     let tx = msg_queue;
-    thread::spawn(move || {
+    tokio::spawn(async move {
         while let Ok(x) = rx.recv() {
-            tx.send(QueueItem::FileMsg(x)).unwrap();
+            let _ = tx.send(QueueItem::FileMsg(x));
         }
     });
 
@@ -69,16 +72,16 @@ pub fn start_client(config_file: &Path, path: &Path) {
         .watch(&watch_path, notify::RecursiveMode::Recursive)
         .unwrap();
 
-    client.request_file_list().unwrap();
+    client.request_file_list().await.unwrap();
 
     let mut blacklist: Blacklist = HashMap::new();
     loop {
-        if let Ok(msg) = incoming_msg.recv() {
+        if let Some(msg) = incoming_msg.recv().await {
             match msg {
                 QueueItem::ServerMsg(push) => {
                     // TODO: decrypt this message using noise
                     let msg = MessageBuilder::decode_message(&push).unwrap();
-                    handle_server_event(&mut client, &watch_path, *msg, &mut blacklist);
+                    handle_server_event(&mut client, &watch_path, *msg, &mut blacklist).await;
                 }
                 QueueItem::FileMsg(event) => {
                     handle_fs_event(
@@ -86,14 +89,15 @@ pub fn start_client(config_file: &Path, path: &Path) {
                         &watch_path.canonicalize().unwrap(),
                         event,
                         &mut blacklist,
-                    );
+                    )
+                    .await;
                 }
             }
         }
     }
 }
 
-fn handle_server_event(
+async fn handle_server_event(
     client: &mut Client,
     watch_path: &Path,
     event: Message,
@@ -122,6 +126,7 @@ fn handle_server_event(
                 debug!("File not found on server: {:?}", file.path);
                 client
                     .send_file_info(watch_path, &watch_path.join(&file.path))
+                    .await
                     .unwrap();
             }
             for file in server_files.difference(&local_files) {
@@ -139,6 +144,7 @@ fn handle_server_event(
                 let path = watch_path.join(chunk.path.path.clone());
                 client
                     .send_chunk(&chunk.id, &path)
+                    .await
                     .expect("Failed to queue chunk");
             }
         }
@@ -161,7 +167,7 @@ fn handle_server_event(
                         offset: (i * CHUNK_SIZE) as u32,
                         id: chunk.clone(),
                     };
-                    client.request_chunk(q_chunk).unwrap();
+                    client.request_chunk(q_chunk).await.unwrap();
                 }
             }
         }
@@ -181,7 +187,7 @@ fn handle_server_event(
     };
 }
 
-fn handle_fs_event(
+async fn handle_fs_event(
     client: &mut Client,
     watch_path: &Path,
     event: DebouncedEvent,
@@ -194,7 +200,7 @@ fn handle_fs_event(
         | DebouncedEvent::Chmod(p) => {
             // Check the blacklist to make sure the event isn't from a partial file transfer
             if !blacklist.contains_key(p.strip_prefix(watch_path).unwrap()) {
-                match client.send_file_info(watch_path, &p) {
+                match client.send_file_info(watch_path, &p).await {
                     Ok(_) => {
                         info!("Successfully sent the file");
                     }
@@ -203,7 +209,10 @@ fn handle_fs_event(
             }
         }
         DebouncedEvent::Remove(p) => {
-            match client.delete_file(FilePath::new(p.strip_prefix(watch_path).unwrap())) {
+            match client
+                .delete_file(FilePath::new(p.strip_prefix(watch_path).unwrap()))
+                .await
+            {
                 Ok(_) => info!("Successfully deleted the file"),
                 Err(e) => error!("{:?}", e),
             }

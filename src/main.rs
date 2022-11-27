@@ -58,7 +58,8 @@ enum Command {
     GenKey,
 }
 
-fn main() {
+#[tokio::main]
+async fn main() {
     env_logger::Builder::from_default_env()
         //.filter_level(LevelFilter::Debug)
         .init();
@@ -69,9 +70,9 @@ fn main() {
     match cli.command {
         Command::Run { server, file_path } => {
             if server {
-                server::start_server(&config_file);
+                server::start_server(&config_file).await;
             } else if let Some(arg) = file_path {
-                start_client(&config_file, &arg);
+                start_client(&config_file, &arg).await;
             }
         }
         Command::DumpDb => {

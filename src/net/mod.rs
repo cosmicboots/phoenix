@@ -50,23 +50,26 @@
 
 pub mod error;
 
+use async_trait::async_trait;
 use base64ct::{Base64, Encoding};
 use error::NetError;
 use snow::{Builder, Keypair, TransportState};
-use std::{
-    io::{Read, Write},
-    net::TcpStream,
-};
+use tokio::{io::AsyncReadExt, io::AsyncWriteExt, net::TcpStream};
 
 static NOISE_PATTERN: &str = "Noise_IK_25519_ChaChaPoly_BLAKE2s";
 
+#[async_trait]
 /// A generic trait that allows noise connections to be created and send/recieve information
 pub trait NoiseConnection {
-    fn new(stream: TcpStream, static_key: &[u8], remote_keys: &[Vec<u8>]) -> Result<Self, NetError>
+    async fn new(
+        stream: TcpStream,
+        static_key: &[u8],
+        remote_keys: &[Vec<u8>],
+    ) -> Result<Self, NetError>
     where
         Self: Sized;
-    fn send(&mut self, msg: &[u8]) -> Result<(), NetError>;
-    fn recv(&mut self) -> Result<Vec<u8>, NetError>;
+    async fn send(&mut self, msg: &[u8]) -> Result<(), NetError>;
+    async fn recv(&mut self) -> Result<Vec<u8>, NetError>;
 }
 
 /// The server side of the network connection
@@ -79,8 +82,9 @@ pub struct NetServer {
     noise: TransportState,
 }
 
+#[async_trait]
 impl NoiseConnection for NetServer {
-    fn new(
+    async fn new(
         mut stream: TcpStream,
         static_key: &[u8],
         remote_keys: &[Vec<u8>],
@@ -92,7 +96,7 @@ impl NoiseConnection for NetServer {
         let mut noise = builder.local_private_key(static_key).build_responder()?;
 
         // <- e, es, s, ss
-        noise.read_message(&recv(&mut stream)?, &mut buf)?;
+        noise.read_message(&recv(&mut stream).await?, &mut buf)?;
 
         // At this point, we have the initiator's static key and we can check if it's in our
         // allowed list of keys
@@ -108,23 +112,23 @@ impl NoiseConnection for NetServer {
 
         // -> e, ee, se
         let len = noise.write_message(&[0u8; 0], &mut buf)?;
-        send(&mut stream, &buf[..len])?;
+        send(&mut stream, &buf[..len]).await?;
 
         // Finished handshake. Switch to transport mode
         let noise = noise.into_transport_mode()?;
         Ok(NetServer { stream, buf, noise })
     }
 
-    fn send(&mut self, msg: &[u8]) -> Result<(), NetError> {
+    async fn send(&mut self, msg: &[u8]) -> Result<(), NetError> {
         let len = self.noise.write_message(msg, &mut self.buf)?;
-        send(&mut self.stream, &self.buf[..len])?;
+        send(&mut self.stream, &self.buf[..len]).await?;
         Ok(())
     }
 
-    fn recv(&mut self) -> Result<Vec<u8>, NetError> {
+    async fn recv(&mut self) -> Result<Vec<u8>, NetError> {
         let len = self
             .noise
-            .read_message(&recv(&mut self.stream)?, &mut self.buf)?;
+            .read_message(&recv(&mut self.stream).await?, &mut self.buf)?;
         Ok(self.buf[..len].to_vec())
     }
 }
@@ -145,9 +149,9 @@ impl NetClient {
         Ok(self.buf[..len].to_vec())
     }
 
-    pub fn clone_stream(&self) -> Result<TcpStream, NetError> {
-        Ok(self.stream.try_clone()?)
-    }
+    //pub fn clone_stream(&self) -> Result<TcpStream, NetError> {
+    //    Ok(self.stream.split()?)
+    //}
 
     pub fn decrypt(&mut self, msg: &[u8]) -> Result<Vec<u8>, NetError> {
         let len = self.noise.read_message(msg, &mut self.buf)?;
@@ -155,8 +159,9 @@ impl NetClient {
     }
 }
 
+#[async_trait]
 impl NoiseConnection for NetClient {
-    fn new(
+    async fn new(
         mut stream: TcpStream,
         static_key: &[u8],
         remote_keys: &[Vec<u8>],
@@ -164,7 +169,7 @@ impl NoiseConnection for NetClient {
         let mut buf = vec![0u8; 65535];
 
         // Setup builder to start handshake
-        let builder = Builder::new(NOISE_PATTERN.parse().unwrap());
+        let builder = Builder::new(NOISE_PATTERN.parse()?);
 
         let mut noise = builder
             .local_private_key(static_key)
@@ -173,49 +178,48 @@ impl NoiseConnection for NetClient {
             .unwrap();
 
         // -> e, es, s, ss
-        let len = noise.write_message(&[], &mut buf).unwrap();
-        send(&mut stream, &buf[..len])?;
+        let len = noise.write_message(&[], &mut buf)?;
+        send(&mut stream, &buf[..len]).await?;
 
         // <- e, ee, se
         noise
-            .read_message(&recv(&mut stream).unwrap(), &mut buf)
-            .unwrap();
+            .read_message(&recv(&mut stream).await?, &mut buf)?;
 
-        let noise = noise.into_transport_mode().unwrap();
+        let noise = noise.into_transport_mode()?;
         Ok(NetClient { stream, buf, noise })
     }
 
-    fn send(&mut self, msg: &[u8]) -> Result<(), NetError> {
+    async fn send(&mut self, msg: &[u8]) -> Result<(), NetError> {
         if msg.len() > 65535 {
             return Err(NetError::MsgLength(msg.len()));
         }
         let len = self.noise.write_message(msg, &mut self.buf)?;
-        send(&mut self.stream, &self.buf[..len])?;
+        send(&mut self.stream, &self.buf[..len]).await?;
         Ok(())
     }
 
-    fn recv(&mut self) -> Result<Vec<u8>, NetError> {
+    async fn recv(&mut self) -> Result<Vec<u8>, NetError> {
         let len = self
             .noise
-            .read_message(&recv(&mut self.stream)?, &mut self.buf)?;
+            .read_message(&recv(&mut self.stream).await?, &mut self.buf)?;
         Ok(self.buf[..len].to_vec())
     }
 }
 
-pub fn recv(stream: &mut TcpStream) -> Result<Vec<u8>, NetError> {
+pub async fn recv(stream: &mut TcpStream) -> Result<Vec<u8>, NetError> {
     let mut msg_len_buf = [0u8; 2];
-    stream.read_exact(&mut msg_len_buf)?;
+    stream.read_exact(&mut msg_len_buf).await?;
     let msg_len = u16::from_be_bytes(msg_len_buf) as usize;
     let mut msg = vec![0u8; msg_len];
-    stream.read_exact(&mut msg[..])?;
+    stream.read_exact(&mut msg[..]).await?;
     Ok(msg)
 }
 
-fn send(stream: &mut TcpStream, msg: &[u8]) -> Result<(), NetError> {
+async fn send(stream: &mut TcpStream, msg: &[u8]) -> Result<(), NetError> {
     let msg_len = (msg.len() as u16).to_be_bytes();
     // Time out might be needed here...?
-    stream.write_all(&msg_len)?;
-    stream.write_all(msg)?;
+    stream.write_all(&msg_len).await?;
+    stream.write_all(msg).await?;
     Ok(())
 }
 

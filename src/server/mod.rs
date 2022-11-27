@@ -1,53 +1,59 @@
 mod db;
 
-use base64ct::{Base64, Encoding};
-
-use crossbeam_channel::{select, Receiver, Sender};
-use db::Db;
-
 use crate::{
     client::CHUNK_SIZE,
     messaging::{
-        arguments::{Chunk, FileId, FileMetadata, QualifiedChunk, QualifiedChunkId, FilePath},
+        arguments::{Chunk, FileId, FileMetadata, FilePath, QualifiedChunk, QualifiedChunkId},
         Directive,
     },
 };
+use base64ct::{Base64, Encoding};
+use db::Db;
 
 use super::{
     config::{Config, ServerConfig},
     messaging::MessageBuilder,
     net::{NetServer, NoiseConnection},
 };
-use std::{net::TcpListener, path::Path, sync::Arc, thread};
+use std::{path::Path, sync::Arc, time::Duration};
+use tokio::{
+    net::TcpListener,
+    select,
+    sync::mpsc::{self, Receiver, Sender},
+};
 
 type TxRxHandles = (Sender<Sender<Vec<u8>>>, Receiver<Sender<Vec<u8>>>);
 
-pub fn start_server(config_file: &Path) {
+pub async fn start_server(config_file: &Path) {
     let config = Arc::new(ServerConfig::read_config(config_file).expect("Bad config"));
     let db = Arc::new(Db::new(&config.storage_path).expect("Failed to open database"));
 
     // Construct TcpListener
-    let listener = TcpListener::bind(&config.bind_address).unwrap();
+    let listener = TcpListener::bind(&config.bind_address).await.unwrap();
 
     // Store channel senders for each client connection thread
-    let (threads_tx, threads_rx): TxRxHandles = crossbeam_channel::unbounded();
-    let (broadcast_tx, broadcast_rx): (Sender<Vec<u8>>, Receiver<Vec<u8>>) =
-        crossbeam_channel::unbounded();
+    let (threads_tx, mut threads_rx): TxRxHandles = mpsc::channel(100);
+    let (broadcast_tx, mut broadcast_rx): (Sender<Vec<u8>>, Receiver<Vec<u8>>) = mpsc::channel(100);
 
     // Broadcast thread
-    thread::spawn(move || {
+    tokio::spawn(async move {
         let mut threads: Vec<Sender<Vec<u8>>> = vec![];
         let mut remove_queue: Vec<usize> = vec![];
         loop {
             select! {
-                recv(threads_rx) -> t => {
-                    threads.push(t.unwrap());
-                    debug!("Added a client thread to the broadcast system.");
+                t = (&mut threads_rx).recv() => {
+                    match t {
+                        None => error!("threads_rx channel dropped"),
+                        Some(x) => {
+                            threads.push(x);
+                            debug!("Added a client thread to the broadcast system.");
+                        }
+                    }
                 },
-                recv(broadcast_rx) -> raw_msg => {
-                    if let Ok(msg) = raw_msg {
+                raw_msg = (&mut broadcast_rx).recv() => {
+                    if let Some(msg) = raw_msg {
                         for (i, thread) in threads.iter().enumerate() {
-                            if thread.send(msg.clone()).is_err() {
+                            if thread.send(msg.clone()).await.is_err() {
                                 // Assume the recieving thread died
                                 remove_queue.push(i);
                             }
@@ -60,29 +66,32 @@ pub fn start_server(config_file: &Path) {
                 debug!("Removed an old broadcast channel handel");
                 threads.remove(i);
             }
+            tokio::time::sleep(Duration::from_millis(1000)).await;
         }
     });
 
     // Iterate through streams
     println!("Listening for connections on {}...", config.bind_address);
-    for stream in listener.incoming() {
+    loop {
+        let (stream, _) = listener.accept().await.unwrap();
         println!("Spawning connection...");
 
         // Create channel to to recieve push events
-        let (msg_tx, msg_rx): (Sender<Vec<u8>>, Receiver<Vec<u8>>) = crossbeam_channel::unbounded();
-        threads_tx.send(msg_tx).unwrap();
+        let (msg_tx, msg_rx): (Sender<Vec<u8>>, Receiver<Vec<u8>>) = mpsc::channel(100);
+        debug!("threads_tx still alive: {:?}", threads_tx);
+        threads_tx.send(msg_tx).await.unwrap();
 
         // Spawn thread to handle each stream
         let config = config.clone();
         let db = db.clone();
         let broadcast = broadcast_tx.clone();
-        thread::spawn(move || {
+        tokio::spawn(async move {
             // TODO: Handle broadcast messages
             let _bcast_rx = msg_rx;
 
             // Create new Server for use with noise layer
             let mut svc = NetServer::new(
-                stream.unwrap(),
+                stream,
                 &Base64::decode_vec(&config.privkey).expect("Couldn't decode private key"),
                 &config
                     .clients
@@ -90,10 +99,11 @@ pub fn start_server(config_file: &Path) {
                     .map(|x| Base64::decode_vec(x).unwrap())
                     .collect::<Vec<Vec<u8>>>(),
             )
+            .await
             .unwrap();
             info!("Connection established!");
 
-            while let Ok(raw_msg) = &svc.recv() {
+            while let Ok(raw_msg) = &svc.recv().await {
                 let mut msg_builder = MessageBuilder::new(1);
                 let msg = MessageBuilder::decode_message(raw_msg).unwrap();
                 msg_builder.increment_counter();
@@ -133,6 +143,7 @@ pub fn start_server(config_file: &Path) {
                         if let Some(id) = complete {
                             broadcast
                                 .send(msg_builder.encode_message(Directive::SendFile, Some(id)))
+                                .await
                                 .unwrap();
                         }
                     }
@@ -145,7 +156,10 @@ pub fn start_server(config_file: &Path) {
                     Directive::RequestFile => {
                         let argument = msg.argument.unwrap();
                         let file_id = argument.as_any().downcast_ref::<FileId>().unwrap();
-                        let file = db.get_file(file_id.path.to_str().unwrap()).unwrap().unwrap();
+                        let file = db
+                            .get_file(file_id.path.to_str().unwrap())
+                            .unwrap()
+                            .unwrap();
                         let msg = msg_builder.encode_message(Directive::SendFile, Some(file));
                         let _ = &svc.send(&msg);
                     }
