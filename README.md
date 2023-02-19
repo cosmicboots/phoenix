@@ -3,6 +3,9 @@
 Phoenix is a chunk-based file synchronization platform using a custom binary
 protocol that sits on-top of the [Noise Protocol](https://noiseprotocol.org/).
 
+> **_NOTE_**: This application is currently targeted at Linux x86-64 bit
+> systems. No other platforms should expect a working application.
+
 ## The State of File Synchronization
 
 Current file synchronization tools tend to fit into two buckets:
@@ -30,6 +33,10 @@ concept to work, an entire new ecosystem will have to be created; client,
 protocol, and server included.
 
 ## Development/Contributing
+
+> **_NOTE_**: The commands in this section require a working rust tool chain to
+> be setup on your system. Instructions on how to do this vary between systems,
+> but [rustup](https://rustup.rs/) is a good starting place.
 
 ### Setting Up The Program
 
@@ -61,10 +68,30 @@ After the configuration files are written:
 
 At this point the client and server should be talking to each other.
 
+### Installing / Building Release Binary
+
+To build the release binary, simply invoke cargo build with the release flag:
+```shell
+cargo build --release
+```
+
+To install the application:
+```shell
+cargo install --path .
+```
+
+Uninstall:
+```shell
+cargo uninstall
+```
+
 ### Code Documentation
 
-The should be fairly well documented and could be generated and viewed using
-`cargo`:
+The code should be fairly well documented and could be generated and viewed
+using `cargo`:
 ```
 cargo doc --open
 ```
+
+If it looks like importation documentation is missing, open an issue or submit
+a PR!
