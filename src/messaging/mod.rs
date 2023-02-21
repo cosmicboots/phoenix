@@ -62,6 +62,8 @@ use self::error::MessageError;
 
 //struct Version(u8);
 
+static NOISE_MAX_LENGTH: usize = 65535;
+
 /// Defines the different available protocol verbs/directives.
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum Directive {
@@ -192,7 +194,16 @@ impl MessageBuilder {
 
         self.current_request += 1;
 
-        msg.into()
+        let raw_bytes: Vec<u8> = msg.into();
+
+        if raw_bytes.len() > NOISE_MAX_LENGTH {
+            error!("Noise message length error");
+            error!("Length: {} (allowed {NOISE_MAX_LENGTH})", raw_bytes.len());
+            error!("File {} times too big", raw_bytes.len() / NOISE_MAX_LENGTH);
+            panic!();
+        }
+
+        raw_bytes
     }
 
     pub fn decode_message(message: &[u8]) -> Result<Box<Message>, MessageError> {

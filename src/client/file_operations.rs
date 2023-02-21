@@ -13,8 +13,8 @@ use std::{
     path::Path,
 };
 
-pub const CHUNK_SIZE: usize = 1024; // 8 byte chunk size. TODO: automatically determine this.
-                                    // Probably using file size ranges
+pub const CHUNK_SIZE: usize = 1 << 20; // 8 byte chunk size. TODO: automatically determine this.
+                                      // Probably using file size ranges
 
 /// This struct is the main entry point for any operations that come from the client.
 ///
