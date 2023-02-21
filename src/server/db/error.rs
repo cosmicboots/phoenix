@@ -1,7 +1,6 @@
 //! Database module errors
 
-use std::{fmt::Display, error::Error};
-
+use std::{error::Error, fmt::Display};
 
 #[derive(Debug)]
 /// Error type used by the `Db` module.
@@ -25,4 +24,3 @@ impl From<sled::Error> for DbError {
         DbError::EngineError(e)
     }
 }
-

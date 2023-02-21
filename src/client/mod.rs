@@ -9,6 +9,7 @@ use crate::{
 };
 use base64ct::{Base64, Encoding};
 use file_operations::Client;
+use log::{debug, error, info};
 use notify::{watcher, DebouncedEvent, Watcher};
 use std::{
     collections::{HashMap, HashSet},
@@ -30,6 +31,7 @@ pub use file_operations::CHUNK_SIZE;
 
 pub type Blacklist = HashMap<PathBuf, FileMetadata>;
 
+/// Start the client
 pub async fn start_client(config_file: &Path, path: &Path) {
     let config = ClientConfig::read_config(config_file).unwrap();
 

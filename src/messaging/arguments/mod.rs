@@ -12,7 +12,7 @@ use std::{
     hash::Hash,
     io,
     os::unix::prelude::PermissionsExt,
-    path::{PathBuf, Path},
+    path::{Path, PathBuf},
     time, vec,
 };
 

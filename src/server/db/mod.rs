@@ -4,14 +4,18 @@
 
 pub mod error;
 
+use crate::messaging::arguments::{Chunk, ChunkId, FileId, FileList, FileMetadata, FilePath};
 use base64ct::{Base64, Encoding};
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
+use log::{debug, warn};
 use sled::{
-    transaction::{ConflictableTransactionResult, TransactionalTree, ConflictableTransactionError, TransactionError},
+    transaction::{
+        ConflictableTransactionError, ConflictableTransactionResult, TransactionError,
+        TransactionalTree,
+    },
     IVec, Transactional, Tree,
 };
 use std::{collections::HashSet, fmt::Write, path::Path, vec};
-use crate::messaging::arguments::{Chunk, ChunkId, FileId, FileList, FileMetadata, FilePath};
 
 use self::error::DbError;
 
@@ -121,7 +125,9 @@ impl Db {
                         if old_file == *file {
                             // The file is the same as the old
                             warn!("Duplicate file attempted to add to the file store");
-                            return Err(ConflictableTransactionError::Abort(DbError::DuplicateFile));
+                            return Err(ConflictableTransactionError::Abort(
+                                DbError::DuplicateFile,
+                            ));
                         } else {
                             debug!("Updating file: {:?}", file.file_id.path);
                             let mut old_chunks = HashSet::new();
@@ -186,13 +192,13 @@ impl Db {
                     Ok(new_chunks)
                 },
             ) {
-                Ok(x) => x,
-                Err(TransactionError::Abort(e)) => {
-                    return Err(e);
-                }
-                // TODO: Fix this error handling
-                _ => panic!("Database operation failed"),
-            };
+            Ok(x) => x,
+            Err(TransactionError::Abort(e)) => {
+                return Err(e);
+            }
+            // TODO: Fix this error handling
+            _ => panic!("Database operation failed"),
+        };
         Ok(chunks)
     }
 
@@ -200,9 +206,9 @@ impl Db {
     pub fn get_file(&self, file: &str) -> sled::Result<Option<FileMetadata>> {
         match self.file_table.get(file) {
             Ok(x) => match x {
-                Some(value) => Ok(
-                    Some(bincode::deserialize::<FileMetadata>(&value).expect("Failed to deserialize"))
-                ),
+                Some(value) => Ok(Some(
+                    bincode::deserialize::<FileMetadata>(&value).expect("Failed to deserialize"),
+                )),
                 None => Ok(None),
             },
             Err(e) => Err(e),

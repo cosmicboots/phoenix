@@ -15,6 +15,7 @@ use crate::{
 use base64ct::{Base64, Encoding};
 use db::error::DbError;
 use db::Db;
+use log::{debug, error, info};
 use std::{path::Path, sync::Arc, time::Duration};
 use tokio::{
     net::TcpListener,
@@ -24,6 +25,7 @@ use tokio::{
 
 type TxRxHandles = (Sender<Sender<Vec<u8>>>, Receiver<Sender<Vec<u8>>>);
 
+/// Start the server
 pub async fn start_server(config_file: &Path) {
     let config = Arc::new(ServerConfig::read_config(config_file).expect("Bad config"));
     let db = Arc::new(Db::new(&config.storage_path).expect("Failed to open database"));

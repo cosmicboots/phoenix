@@ -52,6 +52,7 @@ pub mod error;
 use async_trait::async_trait;
 use base64ct::{Base64, Encoding};
 use error::NetError;
+use log::{debug, error};
 use snow::{Builder, Keypair, TransportState};
 use tokio::{io::AsyncReadExt, io::AsyncWriteExt, net::TcpStream};
 
@@ -165,8 +166,7 @@ impl NoiseConnection for NetClient {
         send(&mut stream, &buf[..len]).await?;
 
         // <- e, ee, se
-        noise
-            .read_message(&recv(&mut stream).await?, &mut buf)?;
+        noise.read_message(&recv(&mut stream).await?, &mut buf)?;
 
         let noise = noise.into_transport_mode()?;
         Ok(NetClient { stream, buf, noise })
@@ -206,6 +206,13 @@ async fn send(stream: &mut TcpStream, msg: &[u8]) -> Result<(), NetError> {
     Ok(())
 }
 
+/// Generate a noise key pair
+///
+/// This creates a [Noise Protocol](https://noiseprotocol.org) keypair using the
+/// `Noise_IK_25519_ChaChaPoly_BLAKE2s` noise pattern.
+///
+/// The keypair will be used to preform the client-server network handshake and should be included
+/// in the [config](config/index.html).
 pub fn generate_noise_keypair() -> Keypair {
     let builder = Builder::new(NOISE_PATTERN.parse().unwrap());
     builder.generate_keypair().unwrap()

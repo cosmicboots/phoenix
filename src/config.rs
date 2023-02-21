@@ -1,5 +1,6 @@
 //! This module provides the configuration file structure for both the client and the server.
 
+use log::{debug, warn};
 use serde::{Deserialize, Serialize};
 use std::{
     env, fs,
@@ -97,5 +98,16 @@ impl Config for ClientConfig {
             };
             Ok(config)
         }
+    }
+}
+
+pub fn handle_dump_config<T>(config: T, file_path: Option<String>, write: bool)
+where
+    T: Config,
+{
+    if write {
+        config.write_config(&file_path.unwrap()).unwrap();
+    } else {
+        println!("{}", config.dump_config().unwrap());
     }
 }

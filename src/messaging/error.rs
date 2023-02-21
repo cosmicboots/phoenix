@@ -1,6 +1,6 @@
 //! Message module errors
 
-use std::{fmt::Display, error::Error, io, string::FromUtf8Error};
+use std::{error::Error, fmt::Display, io, string::FromUtf8Error};
 
 #[derive(Debug)]
 /// Error used when encoding and decoding messages.

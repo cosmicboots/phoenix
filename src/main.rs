@@ -1,19 +1,9 @@
-//! Phoenix main entry point
-mod client;
-mod config;
-mod messaging;
-mod net;
-mod server;
-
-#[macro_use]
-extern crate log;
-
-use std::{env, path::PathBuf};
+//! Phoenix Command Line Interface
 
 use base64ct::{Base64, Encoding};
 use clap::{ArgGroup, Parser, Subcommand};
-use client::start_client;
-use config::{ClientConfig, Config, ServerConfig};
+use phoenix::config::{ClientConfig, Config, ServerConfig};
+use std::path::PathBuf;
 
 #[derive(Parser)]
 #[clap(author, version, about)]
@@ -65,21 +55,21 @@ async fn main() {
         .init();
     let cli = Cli::parse();
 
-    let config_file = find_config(cli.config);
+    let config_file = phoenix::find_config(cli.config);
 
     match cli.command {
         Command::Run { server, file_path } => {
             if server {
-                server::start_server(&config_file).await;
+                phoenix::start_server(&config_file).await;
             } else if let Some(arg) = file_path {
-                start_client(&config_file, &arg).await;
+                phoenix::start_client(&config_file, &arg).await;
             }
         }
         Command::DumpDb => {
-            server::dump_data(&config_file);
+            phoenix::dump_data(&config_file);
         }
         Command::GenKey => {
-            let keypair = net::generate_noise_keypair();
+            let keypair = phoenix::generate_noise_keypair();
             println!(
                 "Private: {}\nPublic: {}",
                 Base64::encode_string(&keypair.private),
@@ -93,52 +83,11 @@ async fn main() {
         } => {
             if server {
                 let config = ServerConfig::read_config(&config_file).unwrap();
-                handle_dump_config(config, file_path, write);
+                phoenix::config::handle_dump_config(config, file_path, write);
             } else {
                 let config = ClientConfig::read_config(&config_file).unwrap();
-                handle_dump_config(config, file_path, write);
+                phoenix::config::handle_dump_config(config, file_path, write);
             }
         }
     }
-}
-
-fn handle_dump_config<T>(config: T, file_path: Option<String>, write: bool)
-where
-    T: Config,
-{
-    if write {
-        config.write_config(&file_path.unwrap()).unwrap();
-    } else {
-        println!("{}", config.dump_config().unwrap());
-    }
-}
-
-/// Find the config file location
-///
-/// In order of preference
-/// 1. File specified with `--config` cli argument
-/// 2. XDG_CONFIG_HOME/phoenix/config.toml
-/// 3. ~/.config/phoenix/config.toml
-/// 4. ./config.toml
-fn find_config(config: Option<PathBuf>) -> PathBuf {
-    // File spcified with --config flag
-    if let Some(cfg) = config {
-        return cfg;
-    }
-
-    // Fall back paths
-    let mut base_path = PathBuf::from("config.toml");
-    if let Ok(path_str) = env::var("XDG_CONFIG_HOME") {
-        let path = PathBuf::from(path_str).join("phoenix");
-        if path.is_dir() {
-            base_path = path.join("config.toml");
-        }
-    } else if let Ok(home) = env::var("HOME") {
-        let path = PathBuf::from(home).join(".config/phoenix");
-        if path.is_dir() {
-            base_path = path.join("config.toml");
-        }
-    }
-    info!("Using {:?} as config path", base_path);
-    base_path
 }
