@@ -76,7 +76,7 @@ fn get_server_storage_path() -> PathBuf {
     base_path.join("phoenix")
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct ClientConfig {
     pub privkey: String,
     pub server_address: String,

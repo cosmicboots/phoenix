@@ -17,13 +17,12 @@ mod messaging;
 mod net;
 pub mod server;
 
+use log::info;
 use std::{env, path::PathBuf};
 
-pub use client::start_client;
-use log::info;
+pub use client::Client;
 pub use net::generate_noise_keypair;
-pub use server::dump_data;
-pub use server::start_server;
+pub use server::{dump_data, start_server};
 
 /// Find the config file location
 ///

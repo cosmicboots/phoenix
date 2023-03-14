@@ -40,12 +40,14 @@ pub struct EventActorHandle {
 }
 
 impl EventActorHandle {
-    pub fn new(config: ClientConfig, path: &Path) -> Self {
+    pub fn new(config: &ClientConfig, path: &Path) -> Self {
         let (api_tx, api_rx) = mpsc::channel(8);
         let (fs_tx, fs_rx) = mpsc::channel(8);
         let (serv_tx, serv_rx) = mpsc::channel(8);
         let actor = EventActor::new(api_rx, fs_rx, serv_rx);
-        tokio::spawn(async move { actor.run(config, path).await });
+        let config = config.clone();
+        let path = PathBuf::from(path);
+        tokio::spawn(async move { actor.run(config, &path).await });
 
         Self {
             api_tx,
