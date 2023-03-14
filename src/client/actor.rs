@@ -29,9 +29,10 @@ use tokio::{
 #[derive(Debug)]
 pub enum ApiRequest {
     GetStatus(oneshot::Sender<usize>),
+    Stop,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct EventActorHandle {
     api_tx: Sender<ApiRequest>,
     fs_tx: Sender<DebouncedEvent>,
@@ -62,6 +63,10 @@ impl EventActorHandle {
         event: DebouncedEvent,
     ) -> Result<(), SendError<DebouncedEvent>> {
         self.fs_tx.send(event).await
+    }
+
+    pub async fn stop(self) {
+        let _ = self.api_tx.send(ApiRequest::Stop).await;
     }
 }
 
@@ -143,7 +148,12 @@ impl EventActor {
             select! {
                 // Client API requests
                 req = self.api_rx.recv() => {
-                    todo!()
+                    if let Some(req) = req {
+                        match req {
+                            ApiRequest::GetStatus(_) => todo!(),
+                            ApiRequest::Stop => break,
+                        }
+                    }
                 }
                 // Server messages
                 push = (&mut client).recv() => {
@@ -167,5 +177,6 @@ impl EventActor {
                 // TODO: Server messages
             }
         }
+        debug!("Client event loop stopped");
     }
 }
