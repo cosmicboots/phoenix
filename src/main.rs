@@ -2,7 +2,10 @@
 
 use base64ct::{Base64, Encoding};
 use clap::{ArgGroup, Parser, Subcommand};
-use phoenix::config::{ClientConfig, Config, ServerConfig};
+use phoenix::{
+    client::Client,
+    config::{ClientConfig, Config, ServerConfig},
+};
 use std::path::PathBuf;
 
 #[derive(Parser)]
@@ -62,7 +65,10 @@ async fn main() {
             if server {
                 phoenix::start_server(&config_file).await;
             } else if let Some(arg) = file_path {
-                phoenix::start_client(&config_file, &arg).await;
+                let config = ClientConfig::read_config(&config_file).unwrap();
+                let client = Client::new(config, &arg);
+                client.start();
+                loop {}
             }
         }
         Command::DumpDb => {
