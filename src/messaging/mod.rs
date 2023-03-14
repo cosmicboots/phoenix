@@ -57,8 +57,8 @@ pub mod arguments;
 pub mod error;
 
 use arguments::{Argument, Version};
-
 use self::error::MessageError;
+use log::error;
 
 //struct Version(u8);
 

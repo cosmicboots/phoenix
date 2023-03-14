@@ -1,10 +1,9 @@
-use log::debug;
-
 use super::{file_operations::CHUNK_SIZE, Blacklist};
 use crate::messaging::{
     arguments::{FileId, FileList, FileMetadata, QualifiedChunk},
     error::MessageError,
 };
+use log::debug;
 use std::{
     fs::{self, File},
     io::{self, Read, Seek, SeekFrom, Write},
