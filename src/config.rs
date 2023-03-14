@@ -91,12 +91,18 @@ impl Config for ClientConfig {
             Ok(toml)
         } else {
             warn!("Config file doesn't exist. Using defaults.");
-            let config = ClientConfig {
-                privkey: String::new(),
-                server_address: "127.0.0.1:8080".to_string(),
-                server_pubkey: String::new(),
-            };
+            let config = ClientConfig::default();
             Ok(config)
+        }
+    }
+}
+
+impl Default for ClientConfig {
+    fn default() -> Self {
+        ClientConfig {
+            privkey: String::new(),
+            server_address: "127.0.0.1:8080".to_string(),
+            server_pubkey: String::new(),
         }
     }
 }
